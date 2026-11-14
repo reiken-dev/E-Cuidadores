@@ -15,19 +15,29 @@
 // Supabase -> además wss:// del mismo dominio).
 // Si más adelante quieres un CSP estricto con nonce, sigue la guía de Next.js "Content Security Policy".
 
-/** Origen (https://host) de una URL de Supabase, o null si falta o no es una URL http(s) válida. */
-export function origenDeSupabase(url: string | undefined | null): string | null {
+/** Un nombre de host normal: letras, números, puntos y guiones. Rechaza comodines (*), `;` y cualquier otro carácter. */
+const HOST_VALIDO = /^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/i;
+
+/**
+ * Origen (https://host[:puerto]) de una URL de Supabase, o null si falta o no es segura de abrir en la política.
+ * - Producción: solo https. En desarrollo también http (Supabase local).
+ * - El host debe ser un nombre normal: nada de comodines ni de caracteres que puedan colar otra directiva.
+ * - Las credenciales de la URL (usuario:clave@) y la ruta se descartan.
+ */
+export function origenDeSupabase(url: string | undefined | null, dev = false): string | null {
   if (!url?.trim()) return null;
   try {
     const u = new URL(url.trim());
-    return u.protocol === 'https:' || u.protocol === 'http:' ? u.origin : null;
+    const protocoloOk = u.protocol === 'https:' || (dev && u.protocol === 'http:');
+    if (!protocoloOk || !HOST_VALIDO.test(u.hostname)) return null;
+    return u.origin;
   } catch {
     return null;
   }
 }
 
 export function construirCsp({ dev, supabaseUrl }: { dev: boolean; supabaseUrl?: string | null }): string {
-  const supabase = origenDeSupabase(supabaseUrl);
+  const supabase = origenDeSupabase(supabaseUrl, dev);
   return [
     "default-src 'self'",
     `script-src 'self' 'unsafe-inline'${dev ? " 'unsafe-eval'" : ''}`,

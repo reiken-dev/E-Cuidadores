@@ -9,6 +9,22 @@ describe('origenDeSupabase', () => {
     expect(origenDeSupabase('https://abcdefgh.supabase.co/rest/v1/')).toBe(URL_SUPABASE);
     expect(origenDeSupabase('  https://abcdefgh.supabase.co  ')).toBe(URL_SUPABASE);
   });
+  it('descarta usuario y clave de la URL', () => {
+    expect(origenDeSupabase('https://usuario:clave@abcdefgh.supabase.co/x')).toBe(URL_SUPABASE);
+  });
+  it('rechaza comodines, aunque la URL sea sintácticamente válida', () => {
+    expect(origenDeSupabase('https://*.supabase.co')).toBeNull();
+    expect(origenDeSupabase('https://*')).toBeNull();
+  });
+  it('rechaza un host que pueda colar otra directiva', () => {
+    expect(origenDeSupabase('https://a.co;script-src')).toBeNull();
+    expect(origenDeSupabase("https://a.co'")).toBeNull();
+  });
+  it('en producción exige https; en desarrollo acepta http', () => {
+    expect(origenDeSupabase('http://localhost:54321')).toBeNull();
+    expect(origenDeSupabase('http://localhost:54321', true)).toBe('http://localhost:54321');
+    expect(origenDeSupabase('http://abcdefgh.supabase.co', false)).toBeNull();
+  });
   it('ignora lo ausente o inválido', () => {
     expect(origenDeSupabase(undefined)).toBeNull();
     expect(origenDeSupabase(null)).toBeNull();
@@ -26,6 +42,33 @@ describe('construirCsp', () => {
   });
   it('con URL de Supabase, abre exactamente ese origen', () => {
     expect(directiva(construirCsp({ dev: false, supabaseUrl: URL_SUPABASE }), 'connect-src')).toBe(`connect-src 'self' ${URL_SUPABASE}`);
+  });
+  it('una variable mal puesta no ensancha ni rompe la política', () => {
+    for (const mala of ['https://*.supabase.co', 'https://*', 'https://a.co;script-src', 'http://abcdefgh.supabase.co']) {
+      const csp = construirCsp({ dev: false, supabaseUrl: mala });
+      expect(directiva(csp, 'connect-src')).toBe("connect-src 'self'");
+      expect(csp).toBe(construirCsp({ dev: false }));
+    }
+  });
+  it('la política de producción es exactamente la de siempre, más el origen de Supabase', () => {
+    expect(construirCsp({ dev: false, supabaseUrl: URL_SUPABASE })).toBe(
+      [
+        "default-src 'self'",
+        "script-src 'self' 'unsafe-inline'",
+        "style-src 'self' 'unsafe-inline'",
+        "img-src 'self' data: blob:",
+        "font-src 'self' data:",
+        `connect-src 'self' ${URL_SUPABASE}`,
+        "manifest-src 'self'",
+        "worker-src 'self' blob:",
+        "media-src 'self'",
+        "object-src 'none'",
+        "base-uri 'self'",
+        "form-action 'self'",
+        "frame-ancestors 'none'",
+        'upgrade-insecure-requests',
+      ].join('; ')
+    );
   });
   it('nunca usa comodines', () => {
     expect(construirCsp({ dev: false, supabaseUrl: URL_SUPABASE })).not.toMatch(/\*/);
