@@ -1,17 +1,24 @@
-// SESIÓN DE /app. Hoy no hay sesión real: sesionDelServidor() devuelve null.
+// SESIÓN DE /app.
 // - Con Supabase desconectado (conexiones.supabase = false en lib/marca.ts), /app es una demostración con banner
 //   y no se consulta ninguna sesión.
-// - Con Supabase conectado, /app exige sesión: sin ella redirige a /entrar. Hasta implementarla, el guard
-//   falla cerrado (nadie entra). Guía y código de ejemplo: docs/conexion/guard-sesion.ts.txt.
+// - Con Supabase conectado, /app exige sesión: sin ella redirige a /entrar (ver app/app/layout.tsx).
+//   Si faltan las variables públicas de Supabase, el guard falla cerrado: nadie entra.
 import { MARCA } from './marca';
+import { crearClienteServidor } from './supabase/servidor';
 
 export interface SesionServidor {
   userId: string;
 }
 
-/** Sesión de quien abre /app, o null. [COMPLETAR: implementar con Supabase Auth; ver docs/conexion/guard-sesion.ts.txt] */
+/** Sesión de quien abre /app, o null. */
 export async function sesionDelServidor(): Promise<SesionServidor | null> {
-  return null;
+  const db = await crearClienteServidor();
+  if (!db) return null;
+  // getUser() valida el token con el servidor de Supabase. No uses getSession() para decidir el acceso:
+  // lee las cookies sin comprobar nada.
+  const { data, error } = await db.auth.getUser();
+  if (error || !data.user) return null;
+  return { userId: data.user.id };
 }
 
 /** ¿/app funciona como demostración (sin cuentas reales)? Mientras Supabase esté desconectado, sí. */
