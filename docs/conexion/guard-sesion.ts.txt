@@ -1,3 +1,4 @@
+// NOTA: esta guía ya está implementada en lib/sesion.ts y lib/supabase/servidor.ts (ECU-2). Se conserva solo como referencia.
 // lib/sesion.ts → sesionDelServidor(): lee la sesión de Supabase en el servidor, desde las cookies.
 // Sustituye el "return null" de lib/sesion.ts por lo de abajo y quita el marcador [COMPLETAR] de ese archivo.
 // Requiere: npm install @supabase/supabase-js @supabase/ssr

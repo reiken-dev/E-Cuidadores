@@ -14,15 +14,22 @@ export async function proxy(request: NextRequest) {
   const db = createServerClient(url, clave, {
     cookies: {
       getAll: () => request.cookies.getAll(),
-      setAll: (lista) => {
+      setAll: (lista, cabeceras) => {
         lista.forEach(({ name, value }) => request.cookies.set(name, value));
         respuesta = NextResponse.next({ request });
         lista.forEach(({ name, value, options }) => respuesta.cookies.set(name, value, options));
+        // Una respuesta que escribe cookies de sesión no debe cachearse (un CDN serviría la sesión a otra persona).
+        Object.entries(cabeceras ?? {}).forEach(([k, v]) => respuesta.headers.set(k, v));
+        respuesta.headers.set('Cache-Control', 'private, no-store');
       },
     },
   });
   // Valida el token y, si hace falta, lo renueva y lo escribe en las cookies de la respuesta.
-  await db.auth.getUser();
+  try {
+    await db.auth.getUser();
+  } catch {
+    // Si Supabase no responde, la página sigue cargando: quien decide el acceso es app/app/layout.tsx.
+  }
   return respuesta;
 }
 

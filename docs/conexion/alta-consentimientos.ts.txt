@@ -1,3 +1,4 @@
+// NOTA: esta guía ya está implementada en lib/alta.ts, app/auth/callback/route.ts y app/aceptar/ (ECU-2). Se conserva solo como referencia.
 // Alta de cuenta: guarda los consentimientos de la persona recién registrada.
 // Cópialo a lib/alta.ts (o similar) y llámalo DESPUÉS de crear la cuenta en Supabase Auth y ANTES de llevarla a /app.
 // Requiere: lib/consentimientos.ts (incluido), supabase/schema.sql (tabla consents con su política de inserción propia).

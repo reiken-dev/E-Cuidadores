@@ -226,9 +226,10 @@ export default function EntrarForm() {
           ...(crearCuenta ? { data: { acepta: { terminos: aceptaTerminos, salud: autorizaSalud } } } : {}),
         },
       });
-      // Si el correo no tiene cuenta, Supabase puede devolver error al no crear usuario: se responde igual que
-      // en el éxito para no revelar qué correos existen.
-      if (error && error.status !== 400 && error.status !== 422) {
+      // Solo un caso se trata como éxito: entrar con un correo sin cuenta (Supabase no crea usuario y responde
+      // otp_disabled/signup_disabled), para no revelar qué correos existen. Cualquier otro error se avisa.
+      const sinCuenta = !crearCuenta && (error?.code === 'otp_disabled' || error?.code === 'signup_disabled');
+      if (error && !sinCuenta) {
         setErrorGeneral(ERROR_ENLACE);
         return;
       }
@@ -583,7 +584,7 @@ export default function EntrarForm() {
 }
 
 /** Casilla propia de 24 px (radio de la ficha), con el área táctil completa de la fila. */
-function Casilla({ checked, onChange, children }: { checked: boolean; onChange: (v: boolean) => void; children: React.ReactNode }) {
+export function Casilla({ checked, onChange, children }: { checked: boolean; onChange: (v: boolean) => void; children: React.ReactNode }) {
   return (
     <label className="flex min-h-11 cursor-pointer items-start gap-3 py-1.5 text-[16px] leading-snug text-[var(--text-secondary)]">
       <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="peer sr-only" />
@@ -600,7 +601,7 @@ function Casilla({ checked, onChange, children }: { checked: boolean; onChange: 
   );
 }
 
-function Marco({ children }: { children: React.ReactNode }) {
+export function Marco({ children }: { children: React.ReactNode }) {
   return (
     <main className="relative mx-auto flex min-h-dvh w-full max-w-[430px] flex-col overflow-hidden px-4 pb-8 pt-3">
       <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10" style={{ background: FUNNEL_BG }} />

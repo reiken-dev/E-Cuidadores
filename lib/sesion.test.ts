@@ -29,3 +29,13 @@ describe('sesionDelServidor', () => {
     expect(await sesionDelServidor()).toBeNull();
   });
 });
+
+describe('consentimientosAlDia', () => {
+  beforeEach(() => crearClienteServidor.mockReset());
+
+  it('sin cliente falla cerrado: false', async () => {
+    crearClienteServidor.mockResolvedValue(null);
+    const { consentimientosAlDia } = await import('./sesion');
+    expect(await consentimientosAlDia()).toBe(false);
+  });
+});

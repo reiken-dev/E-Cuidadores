@@ -1,5 +1,5 @@
 // REGISTRO DE CONSENTIMIENTOS AL CREAR LA CUENTA: la parte pura (qué filas se guardan y con qué versión del texto).
-// La escritura real en public.consents va en docs/conexion/alta-consentimientos.ts.txt, al conectar Supabase.
+// La escritura real en public.consents está en lib/alta.ts (con la sesión, vía RLS); /app exige las dos filas.
 // Nunca se guardan en el navegador: en un dispositivo compartido atribuirían la decisión a otra persona.
 import { LEGAL } from './legal';
 

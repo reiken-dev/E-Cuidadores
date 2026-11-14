@@ -4,6 +4,7 @@
 // - Con Supabase conectado, /app exige sesión: sin ella redirige a /entrar (ver app/app/layout.tsx).
 //   Si faltan las variables públicas de Supabase, el guard falla cerrado: nadie entra.
 import { MARCA } from './marca';
+import { tieneConsentimientos } from './alta';
 import { crearClienteServidor } from './supabase/servidor';
 
 export interface SesionServidor {
@@ -19,6 +20,13 @@ export async function sesionDelServidor(): Promise<SesionServidor | null> {
   const { data, error } = await db.auth.getUser();
   if (error || !data.user) return null;
   return { userId: data.user.id };
+}
+
+/** ¿La sesión tiene los dos consentimientos obligatorios guardados? Falla cerrado: sin cliente o con error, false. */
+export async function consentimientosAlDia(): Promise<boolean> {
+  const db = await crearClienteServidor();
+  if (!db) return false;
+  return tieneConsentimientos(db);
 }
 
 /** ¿/app funciona como demostración (sin cuentas reales)? Mientras Supabase esté desconectado, sí. */
