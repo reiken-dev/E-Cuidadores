@@ -13,3 +13,4 @@
 
 ## Notas
 - Confirmación explícita del alumno antes de enviar cualquier correo real.
+- Configurar un SMTP propio en Supabase Auth (Authentication → Emails → SMTP Settings) con dominio verificado. Con el servicio integrado, Supabase solo envía a miembros de la organización y tiene un límite bajo por hora, así que otras personas no pueden crear cuenta. Además, traducir al español las plantillas de correo de Auth (confirmación, enlace de acceso).
