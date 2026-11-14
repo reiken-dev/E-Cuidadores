@@ -83,3 +83,13 @@ Datos y legal:
 
 Si algo falla:
 - Lee el error completo y revisa la prueba que falla. No borres pruebas ni las saltes para que pasen, y no apagues reglas de lint sin justificarlo en el código.
+
+## Reglas de proceso (Jira + GitHub)
+- Jira: sitio `joeducar.atlassian.net`, proyecto `ECU`, vía el MCP `atlassian` de `.mcp.json`. Estados: `To Do`, `In Progress`, `In review`, `Done`.
+- Fuente de verdad: las historias de `docs/backlog/`. Si Jira y el repo se contradicen, manda el repo.
+- Antes de crear o editar tickets en Jira, muestra el contenido al alumno y espera su confirmación.
+- Antes de tocar código: crea una rama `feat/ECU-<n>-<slug>`. Nunca commitees directo en `main`.
+- Para empezar una tarea usa `/priority-ticket`. Al cerrarla, usa `/commit` y luego `gh pr create` con la descripción completa del cambio y `ECU-<n>` en el título.
+- Después de abrir el PR, usa el subagente `adversarial-reviewer` antes de darlo por terminado.
+- Nunca muevas un ticket a `Done`: lo hace el alumno al fusionar el PR.
+- No repitas el resumen del trabajo en el chat: la sesión se pierde, el PR no. Responde con la URL del PR.
