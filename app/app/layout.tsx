@@ -4,7 +4,7 @@ import type { ReactNode } from 'react';
 import './tokens-app.css';
 import { AppShell } from '@/components/app/AppShell';
 import { MARCA } from '@/lib/marca';
-import { appEnDemostracion, sesionDelServidor } from '@/lib/sesion';
+import { appEnDemostracion, consentimientosAlDia, sesionDelServidor } from '@/lib/sesion';
 
 export const metadata: Metadata = {
   title: { default: `${MARCA.nombre}: el panel del cuidado`, template: `%s · ${MARCA.nombre}` },
@@ -15,7 +15,11 @@ export const metadata: Metadata = {
 export default async function AppLayout({ children }: { children: ReactNode }) {
   const demo = appEnDemostracion();
   // Guard de sesión: con Supabase conectado, /app solo se abre con sesión. Sin ella, a /entrar.
-  if (!demo && !(await sesionDelServidor())) redirect('/entrar');
+  // Y solo con los dos consentimientos guardados (términos y datos de salud): si faltan, a /aceptar.
+  if (!demo) {
+    if (!(await sesionDelServidor())) redirect('/entrar');
+    if (!(await consentimientosAlDia())) redirect('/aceptar');
+  }
   return (
     <>
       {demo && (

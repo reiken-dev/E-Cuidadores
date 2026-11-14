@@ -27,6 +27,12 @@ El detalle de cada paso (con las instrucciones listas para pegarle a tu IA) est�
 - [ ] Autenticación: `app/entrar/EntrarForm.tsx` (hash, límite de intentos, confirmar correo). Con `supabase: true` el formulario ya no simula: hasta que lo conectes, muestra que no está conectado.
 - [ ] Alta con consentimientos: al crear la cuenta, guarda las dos casillas con `docs/conexion/alta-consentimientos.ts.txt`. Sin ese registro no publiques.
 - [ ] Protege `/app` con sesión: copia la lectura de sesión de `docs/conexion/guard-sesion.ts.txt` en `lib/sesion.ts` (el marcador `[COMPLETAR]` de ese archivo debe desaparecer). Sin sesión, `/app` redirige a `/entrar`.
+- [ ] Auth en el panel de Supabase (código listo en `lib/sesion.ts`, `proxy.ts`, `app/auth/callback` y `app/aceptar`):
+  - En Authentication → URL Configuration, añade `https://TU-DOMINIO/auth/callback` (y el de previsualización de Vercel si lo usas).
+  - Pon `NEXT_PUBLIC_SITE_URL` con tu dominio público: el callback redirige a él.
+  - Confirma si quieres "Confirm email" activo; el flujo funciona con o sin él.
+  - Rate limits: el límite de intentos del formulario es solo visual. La protección real es la de Supabase Auth (Authentication → Rate Limits): revísala. El proveedor de correo integrado de Supabase tiene un tope muy bajo: para producción configura un SMTP propio.
+  - Quien tenga sesión pero no los dos consentimientos guardados pasa por `/aceptar` antes de entrar a `/app`.
 - [ ] Datos: reemplaza `lib/store.ts` por llamadas a Supabase (es la única frontera con los datos). El contrato que debe cumplir está en `docs/conexion/ADAPTADOR-DATOS.md`.
 - [ ] Prueba con DOS cuentas distintas: una no debe ver los datos de la otra (RLS). `npm test` ya prueba esto en un PostgreSQL en memoria (`supabase/sql.test.ts`); tu proyecto real hay que probarlo aparte.
 

@@ -5,5 +5,5 @@ import { fileURLToPath } from 'node:url';
 // El JSX sale de tsconfig ("jsx": "react-jsx"): no hace falta configurarlo aquí.
 export default defineConfig({
   resolve: { alias: { '@': fileURLToPath(new URL('.', import.meta.url)) } },
-  test: { environment: 'node', include: ['lib/**/*.test.ts', 'components/**/*.test.tsx', 'app/**/*.test.tsx', 'supabase/**/*.test.ts'] },
+  test: { environment: 'node', include: ['lib/**/*.test.ts', 'app/**/*.test.ts', '*.test.ts', 'components/**/*.test.tsx', 'app/**/*.test.tsx', 'supabase/**/*.test.ts'] },
 });

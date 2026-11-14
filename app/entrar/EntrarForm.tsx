@@ -12,7 +12,7 @@
 // la plantilla debe conectar su propio servicio de autenticación (que guarde la contraseña
 // con hash en el servidor, limite intentos y valide el correo) antes de publicar.
 
-import { correoTexto } from '@/lib/oferta';
+import { crearClienteNavegador } from '@/lib/supabase/navegador';
 import { MARCA } from '@/lib/marca';
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
@@ -27,6 +27,15 @@ const REENVIO_SEGUNDOS = 60;
 const MAX_INTENTOS_FALLIDOS = 5;
 const BLOQUEO_SEGUNDOS = 60;
 const ACCESO_NO_CONECTADO = 'El acceso real todavía no está conectado. Revisa LISTA-DE-CONEXION.md antes de publicar.';
+// Mensajes genéricos: nunca revelan si un correo ya tiene cuenta.
+const ERROR_ACCESO = 'Correo o contraseña incorrectos. Revisa los datos e intenta de nuevo.';
+const ERROR_ALTA = 'No pudimos crear tu cuenta. Revisa los datos e intenta de nuevo en un momento.';
+const ERROR_ENLACE = 'No pudimos enviar el enlace. Intenta de nuevo en un momento.';
+// Errores que devuelve /auth/callback en la URL (?error=…).
+const ERRORES_DE_URL: Record<string, string> = {
+  acceso: 'El enlace no es válido o ya venció. Pide uno nuevo.',
+  consentimientos: 'No pudimos guardar tus aceptaciones. Vuelve a intentarlo.',
+};
 
 function emailValido(v: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
@@ -58,7 +67,7 @@ export default function EntrarForm() {
   const [ocupado, setOcupado] = useState<null | 'password' | 'enlace' | 'reset'>(null);
   const [errorEmail, setErrorEmail] = useState('');
   const [errorPassword, setErrorPassword] = useState('');
-  const [errorGeneral, setErrorGeneral] = useState('');
+  const [errorGeneral, setErrorGeneral] = useState(ERRORES_DE_URL[params.get('error') ?? ''] ?? '');
   const [fallidos, setFallidos] = useState(0);
   const [countdown, setCountdown] = useState(0);
   const [avisoGoogle, setAvisoGoogle] = useState(false);
@@ -111,7 +120,7 @@ export default function EntrarForm() {
     if (!consentimientosOk()) return;
     if (!emailOk || !passOk) return;
     if (!demo) {
-      setErrorGeneral(ACCESO_NO_CONECTADO);
+      void accesoReal();
       return;
     }
 
@@ -139,6 +148,100 @@ export default function EntrarForm() {
     }, 1100);
   }
 
+  // ── Acceso real (Supabase conectado) ──────────────────────────────────────
+  // La contraseña va directo a Supabase Auth: no se guarda ni se escribe en ningún log.
+  function urlDeVuelta() {
+    return `${window.location.origin}/auth/callback?next=/app`;
+  }
+
+  async function accesoReal() {
+    const db = crearClienteNavegador();
+    if (!db) {
+      setErrorGeneral(ACCESO_NO_CONECTADO);
+      return;
+    }
+    setOcupado('password');
+    try {
+      if (modo === 'crear') {
+        const { data, error } = await db.auth.signUp({
+          email: email.trim(),
+          password,
+          options: {
+            emailRedirectTo: urlDeVuelta(),
+            // Las casillas viajan con el alta; /auth/callback las guarda en public.consents con la sesión ya creada.
+            data: { acepta: { terminos: aceptaTerminos, salud: autorizaSalud } },
+          },
+        });
+        if (error) {
+          setErrorGeneral(ERROR_ALTA);
+          return;
+        }
+        setPassword('');
+        // Con sesión inmediata (sin confirmar el correo) seguimos; si no, falta confirmar por correo.
+        if (data.session) {
+          window.location.assign(urlDeVuelta());
+          return;
+        }
+        setVista('enlace-enviado');
+        setCountdown(REENVIO_SEGUNDOS);
+        return;
+      }
+      const { error } = await db.auth.signInWithPassword({ email: email.trim(), password });
+      if (error) {
+        const total = fallidos + 1;
+        setFallidos(total);
+        if (total >= MAX_INTENTOS_FALLIDOS) {
+          setCountdown(BLOQUEO_SEGUNDOS);
+          setErrorGeneral('Demasiados intentos. Espera un minuto antes de volver a probar.');
+        } else {
+          setErrorGeneral(ERROR_ACCESO);
+        }
+        return;
+      }
+      setFallidos(0);
+      setPassword('');
+      window.location.assign(urlDeVuelta());
+    } catch {
+      setErrorGeneral(modo === 'crear' ? ERROR_ALTA : ERROR_ACCESO);
+    } finally {
+      setOcupado(null);
+    }
+  }
+
+  // El enlace por correo lo envía Supabase Auth. "¿La olvidaste?" usa el mismo enlace: entra sin contraseña.
+  async function enlaceReal(tipo: 'enlace' | 'reset') {
+    const db = crearClienteNavegador();
+    if (!db) {
+      setErrorGeneral(ACCESO_NO_CONECTADO);
+      return;
+    }
+    setOcupado(tipo);
+    try {
+      const crearCuenta = tipo === 'enlace' && modo === 'crear';
+      const { error } = await db.auth.signInWithOtp({
+        email: email.trim(),
+        options: {
+          shouldCreateUser: crearCuenta,
+          emailRedirectTo: urlDeVuelta(),
+          ...(crearCuenta ? { data: { acepta: { terminos: aceptaTerminos, salud: autorizaSalud } } } : {}),
+        },
+      });
+      // Solo un caso se trata como éxito: entrar con un correo sin cuenta (Supabase no crea usuario y responde
+      // otp_disabled/signup_disabled), para no revelar qué correos existen. Cualquier otro error se avisa.
+      const sinCuenta = !crearCuenta && (error?.code === 'otp_disabled' || error?.code === 'signup_disabled');
+      if (error && !sinCuenta) {
+        setErrorGeneral(ERROR_ENLACE);
+        return;
+      }
+      setVista('enlace-enviado');
+      setCountdown(REENVIO_SEGUNDOS);
+    } catch {
+      setErrorGeneral(ERROR_ENLACE);
+    } finally {
+      setOcupado(null);
+    }
+  }
+
   function consentimientosOk() {
     if (modo !== 'crear') return true;
     if (aceptaTerminos && autorizaSalud) {
@@ -159,7 +262,7 @@ export default function EntrarForm() {
     if (!validarEmail()) return;
     if (tipo === 'enlace' && !consentimientosOk()) return;
     if (!demo) {
-      setErrorGeneral(ACCESO_NO_CONECTADO);
+      void enlaceReal(tipo);
       return;
     }
     setOcupado(tipo);
@@ -220,10 +323,11 @@ export default function EntrarForm() {
             Revisa tu correo
           </h1>
           <p className="mt-2 max-w-[300px] text-[16px] leading-relaxed text-[var(--text-secondary)]">
-            {correoTexto(
-              esReset ? 'Te enviamos un enlace para crear una contraseña nueva a ' : 'Te enviamos el enlace de acceso a ',
-              'En esta demostración no se envían correos. Con el acceso real, el enlace llegaría a '
-            )}
+            {demo
+              ? 'En esta demostración no se envían correos. Con el acceso real, el enlace llegaría a '
+              : esReset
+                ? 'Te enviamos un enlace para crear una contraseña nueva a '
+                : 'Te enviamos el enlace de acceso a '}
             <span className="font-semibold text-[var(--text-primary)]">{email}</span>
           </p>
           <button
@@ -480,7 +584,7 @@ export default function EntrarForm() {
 }
 
 /** Casilla propia de 24 px (radio de la ficha), con el área táctil completa de la fila. */
-function Casilla({ checked, onChange, children }: { checked: boolean; onChange: (v: boolean) => void; children: React.ReactNode }) {
+export function Casilla({ checked, onChange, children }: { checked: boolean; onChange: (v: boolean) => void; children: React.ReactNode }) {
   return (
     <label className="flex min-h-11 cursor-pointer items-start gap-3 py-1.5 text-[16px] leading-snug text-[var(--text-secondary)]">
       <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="peer sr-only" />
@@ -497,7 +601,7 @@ function Casilla({ checked, onChange, children }: { checked: boolean; onChange: 
   );
 }
 
-function Marco({ children }: { children: React.ReactNode }) {
+export function Marco({ children }: { children: React.ReactNode }) {
   return (
     <main className="relative mx-auto flex min-h-dvh w-full max-w-[430px] flex-col overflow-hidden px-4 pb-8 pt-3">
       <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10" style={{ background: FUNNEL_BG }} />
