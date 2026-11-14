@@ -39,7 +39,7 @@ El detalle de cada paso (con las instrucciones listas para pegarle a tu IA) est�
 ## 3. Hotmart (cobros)
 - [ ] Crea el producto de **suscripción** (la prueba gratis exige Hotmart Club y tarjeta).
 - [ ] Pon tu enlace en `NEXT_PUBLIC_HOTMART_CHECKOUT_URL` (y el anual en `NEXT_PUBLIC_HOTMART_CHECKOUT_ANUAL_URL`) en `.env.local` y vuelve a publicar. El botón del paywall ya lleva a Hotmart: no hace falta tocar su código (la decisión está en `lib/cobro.ts`).
-- [ ] Webhook: copia `docs/conexion/hotmart-webhook.ts.txt` a `app/api/hotmart/route.ts` con `HOTMART_HOTTOK`, `NEXT_PUBLIC_SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY`. Idempotente; responde 200 solo tras guardar, 5xx si falla (Hotmart reintenta) y 503 si falta la configuración.
+- [ ] Webhook: ya está en `app/api/hotmart/route.ts`, con pruebas. Es idempotente; responde 200 solo tras guardar, 5xx si falla (Hotmart reintenta) y 503 si falta la configuración. Falta ponerlo a funcionar con tus claves: `HOTMART_HOTTOK`, `NEXT_PUBLIC_SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY` (solo servidor; nunca con `NEXT_PUBLIC_`). Para probarlo sin Hotmart: `npm run dev` y, en otra terminal, `node --env-file=.env.local scripts/simular-hotmart.mjs PURCHASE_APPROVED tu@correo.com PRUEBA-1`.
 - [ ] Confirma con un aviso de prueba de Hotmart los campos marcados `[VERIFICAR]` (cabecera `X-HOTMART-HOTTOK`, fecha de fin de periodo y nombres de plan). Si un plan no se reconoce, queda como `desconocido`: revísalo a mano.
 - [ ] Haz una compra de prueba real y una cancelación real. Si la persona aún no tiene cuenta, su compra queda pendiente y se enlaza al confirmar su correo.
 

@@ -5,7 +5,7 @@ La lógica difícil ya está en `lib/hotmart.ts` y `lib/correos.ts`, con pruebas
 
 | Archivo | Cópialo a | Requiere |
 |---|---|---|
-| `hotmart-webhook.ts.txt` | `app/api/hotmart/route.ts` | Supabase (`supabase/schema.sql` y `retencion.sql`), `HOTMART_HOTTOK`, `SUPABASE_SERVICE_ROLE_KEY` |
+| `hotmart-webhook.ts.txt` (ya copiado a `app/api/hotmart/route.ts`) | `app/api/hotmart/route.ts` | Supabase (`supabase/schema.sql` y `retencion.sql`), `HOTMART_HOTTOK`, `SUPABASE_SERVICE_ROLE_KEY` |
 | `resend-correos.ts.txt` | `lib/enviar-correo.ts` | `RESEND_API_KEY`, dominio verificado en Resend |
 | `cron-retencion.ts.txt` | `app/api/cron/retencion/route.ts` | `CRON_SECRET`, lo anterior |
 | `vercel.json.txt` | `vercel.json` | Vercel |

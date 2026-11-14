@@ -1,3 +1,4 @@
+// NOTA: esta guía ya está implementada en app/api/hotmart/route.ts (ECU-3), con pruebas en app/api/hotmart/route.test.ts. Se conserva solo como referencia.
 // app/api/hotmart/route.ts — recibe los avisos de Hotmart. ⚠️ Requiere NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY y HOTMART_HOTTOK.
 // Orden: 1) configuración  2) autenticidad  3) evento que no usamos  4) ¿ya procesado?  5) estado  6) anotar el aviso.
 // Respuestas: 200 = recibido (Hotmart no reintenta) · 401 = firma incorrecta · 503 = falta configuración ·

@@ -316,4 +316,22 @@ describe('libro de ingresos y enlace de compras', () => {
       db.exec(`insert into public.payment_events(hotmart_transaction,event,buyer_email,payload) values ('T10','PURCHASE_COMPLETE','a@x.com','{}')`)
     ).rejects.toThrow();
   }, 60000);
+  it('quién conserva el acceso según el estado: activa, en gracia y cancelada con lo ya pagado sí; vencida, reembolso y contracargo no', async () => {
+    const { db, u } = await base();
+    const vigente = async (status: string, finPeriodo: string | null) => {
+      await db.exec(`update public.subscriptions set status='${status}', current_period_end=${finPeriodo ? `'${finPeriodo}'::timestamptz` : 'null'} where user_id='${u}'`);
+      return (await db.query<{ v: boolean }>(`select public.suscripcion_vigente('${u}') as v`)).rows[0].v;
+    };
+    const futuro = new Date(Date.now() + 10 * 864e5).toISOString();
+    const pasado = new Date(Date.now() - 10 * 864e5).toISOString();
+    expect(await vigente('trial', null)).toBe(true);
+    expect(await vigente('active', futuro)).toBe(true);
+    expect(await vigente('past_due', pasado)).toBe(true);
+    expect(await vigente('canceled', futuro)).toBe(true); // cancelada: conserva lo ya pagado
+    expect(await vigente('canceled', pasado)).toBe(false);
+    expect(await vigente('canceled', null)).toBe(false); // sin fecha de fin no se asume acceso
+    expect(await vigente('expired', futuro)).toBe(false);
+    expect(await vigente('refunded', futuro)).toBe(false);
+    expect(await vigente('chargeback', futuro)).toBe(false);
+  }, 60000);
 });
