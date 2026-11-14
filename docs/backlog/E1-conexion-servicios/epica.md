@@ -1,6 +1,6 @@
 # E1 · Conexión de servicios
 
-**Jira:** pendiente de crear
+**Jira:** ECU-1
 **Estado:** borrador, por validar con el alumno
 
 ## Objetivo

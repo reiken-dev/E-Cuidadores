@@ -1,6 +1,6 @@
 # Retención activa sin culpa
 
-**Jira:** pendiente
+**Jira:** ECU-6
 **Épica:** E1
 
 **Como** dueño del producto, **quiero** que corra el cron de retención, **para** acompañar a quien deja de usar la app sin presionarla.

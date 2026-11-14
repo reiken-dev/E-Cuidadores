@@ -1,6 +1,6 @@
 # Entrar con una cuenta real
 
-**Jira:** pendiente
+**Jira:** ECU-2
 **Épica:** E1
 
 **Como** persona que cuida a un familiar, **quiero** crear una cuenta e iniciar sesión, **para** que mis datos estén protegidos y no dependan de mi navegador.

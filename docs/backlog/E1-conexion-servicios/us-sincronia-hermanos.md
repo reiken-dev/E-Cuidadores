@@ -1,6 +1,6 @@
 # Ver los mismos datos que mis hermanos
 
-**Jira:** pendiente
+**Jira:** ECU-5
 **Épica:** E1
 
 **Como** hermano o hermana que comparte el cuidado, **quiero** ver las mismas medicinas, citas y bitácora que los demás, **para** coordinarnos sin llamarnos.

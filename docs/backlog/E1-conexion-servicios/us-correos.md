@@ -1,6 +1,6 @@
 # Recibir correos reales (opcional)
 
-**Jira:** pendiente
+**Jira:** ECU-4
 **Épica:** E1
 
 **Como** persona que cuida a un familiar, **quiero** recibir correos de acceso y avisos, **para** no depender de abrir la app.

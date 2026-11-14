@@ -1,6 +1,6 @@
 # La app se entera de compras y cancelaciones
 
-**Jira:** pendiente
+**Jira:** ECU-3
 **Épica:** E1
 
 **Como** dueño del producto, **quiero** que la app reciba los eventos de Hotmart, **para** dar y quitar acceso según el pago real.
