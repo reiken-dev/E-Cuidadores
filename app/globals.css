@@ -1,0 +1,253 @@
+@import "tailwindcss";
+@import "../components/landing/tokens.css";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-heading: var(--font-sans);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--shadcn-accent-foreground);
+  --color-accent: var(--shadcn-accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --shadcn-accent: oklch(0.97 0 0);
+  --shadcn-accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --radius: 0.625rem;
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --shadcn-accent: oklch(0.269 0 0);
+  --shadcn-accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+  /* Sin líneas huérfanas: los párrafos y elementos de lista reparten la última línea (text-wrap: pretty);
+     los títulos se equilibran (text-wrap: balance). Solo cambian dónde se corta el texto, no su tamaño ni color. */
+  p,
+  li,
+  dd,
+  figcaption {
+    text-wrap: pretty;
+  }
+  h1,
+  h2,
+  h3,
+  h4 {
+    text-wrap: balance;
+  }
+}
+/* ── Landing: entrada escalonada sin librería (la activa components/landing/reveal.tsx) ── */
+html.js [data-reveal] {
+  opacity: 0;
+  transform: translateY(18px);
+  transition:
+    opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  transition-delay: var(--d, 0ms);
+}
+html.js [data-reveal][data-in] {
+  opacity: 1;
+  transform: none;
+}
+[data-reveal]:nth-child(2) { --d: 70ms; }
+[data-reveal]:nth-child(3) { --d: 140ms; }
+[data-reveal]:nth-child(4) { --d: 210ms; }
+[data-reveal]:nth-child(5) { --d: 280ms; }
+[data-reveal]:nth-child(n + 6) { --d: 350ms; }
+/* Red de seguridad: si el script de aparición no arrancó, nada queda invisible. */
+html.reveal-fallback [data-reveal] { opacity: 1; transform: none; }
+@keyframes hero-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+.hero-in {
+  animation: hero-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: var(--d, 0ms);
+}
+/* Firma del héroe: solo el dispositivo flota despacio (7 s, 8 px). El contenido de la captura no se anima. */
+@keyframes captura-flota {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+.captura-flota { animation: captura-flota 7s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  /* Con "reducir movimiento" los reveals y los fundidos quedan en su estado final de inmediato (sin transición). */
+  html.js [data-reveal] { transform: none; transition: none; transition-delay: 0ms; }
+  .hero-in { animation: none; }
+  .captura-flota { animation: none; }
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0ms !important;
+    transition-delay: 0ms !important;
+    animation-duration: 0ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ── Identidad: textura de grano. La órbita del Círculo es estática: nada gira en bucle. ── */
+/* Grano sutil (ruido fractal): da cuerpo a los fondos planos. Se aplica con la clase .grano. */
+.grano { position: relative; isolation: isolate; }
+.grano::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.07;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.6 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+.grano-oscuro::before { mix-blend-mode: screen; opacity: 0.09; filter: invert(1); }
+
+/* ───────────────────────────────────────────────────────────────────────────
+   CAPA DE ACABADO — identidad v2.1: líneas degradé y detalles premium.
+   Solo usa los colores de la paleta aprobada (azul de marca + violeta-azul decorativo).
+   ─────────────────────────────────────────────────────────────────────────── */
+:root {
+  --grad-linea: linear-gradient(115deg, color-mix(in oklab, var(--accent) 85%, white) 0%, color-mix(in oklab, var(--accent-2, #6d5fe6) 65%, transparent) 48%, color-mix(in oklab, var(--accent) 10%, transparent) 100%);
+  --grad-cta: linear-gradient(180deg, color-mix(in oklab, var(--accent) 92%, white) 0%, var(--accent) 50%, color-mix(in oklab, var(--accent) 88%, #0e1b33) 100%);
+  --grad-texto: linear-gradient(100deg, #12306b 0%, #1f5bd6 68%, #3f86f2 125%);
+  --grad-superficie: linear-gradient(180deg, var(--surface) 0%, color-mix(in oklab, var(--surface) 95%, var(--accent)) 100%);
+}
+/* Borde degradé de 1px (o 2px con .borde-grad-2) que respeta el radio: se pinta con máscara, no con border-image. */
+.borde-grad { position: relative; }
+.borde-grad::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  padding: 1px;
+  border-radius: inherit;
+  background: var(--grad-linea);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+.borde-grad-2::before { padding: 2px; }
+/* Tarjetas secundarias: el filo se insinúa; los héroes llevan el borde completo. */
+.borde-suave::before { opacity: 0.55; }
+/* Regla degradé: separador de 1px que nace y muere en transparente. */
+.linea-grad { height: 1px; background: linear-gradient(90deg, transparent 0%, color-mix(in oklab, var(--accent) 45%, transparent) 50%, transparent 100%); }
+.linea-grad-top::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 1px; background: linear-gradient(90deg, transparent 0%, color-mix(in oklab, var(--accent) 50%, transparent) 50%, transparent 100%); pointer-events: none; }
+/* Cifra héroe con degradé de marca (el color de respaldo mantiene el contraste si el degradé falla). */
+.texto-grad { color: var(--accent-strong); background-image: var(--grad-texto); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+/* Superficie elevada: un degradé casi imperceptible que da volumen sin cambiar el color base. */
+.superficie-premium { background-image: var(--grad-superficie); }
+/* Selección, foco de campos y barras de desplazamiento con la voz de la marca. */
+::selection { background: color-mix(in oklab, var(--accent) 24%, transparent); }
+input:focus-visible, textarea:focus-visible, select:focus-visible { box-shadow: 0 0 0 4px color-mix(in oklab, var(--accent) 16%, transparent); }
+* { scrollbar-width: thin; scrollbar-color: color-mix(in oklab, var(--accent) 35%, transparent) transparent; }
+@media (forced-colors: active) {
+  .borde-grad::before { display: none; }
+  .texto-grad { -webkit-text-fill-color: currentColor; background: none; }
+}

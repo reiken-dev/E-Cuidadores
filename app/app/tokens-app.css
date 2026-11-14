@@ -1,0 +1,159 @@
+/* Estilos propios de la app interna (/app): escala tipográfica, skeleton e impresión.
+   Los colores (también los de estado) viven solo en components/landing/tokens.css, el archivo que se tematiza.
+   Ningún componente usa hex sueltos: todo sale de esas variables. */
+
+/* Escala tipográfica (12, 14, 16, 18, 22, 28, 36, 48 px) + nivel héroe. Baloo 2 solo en display/títulos. */
+.t-hero {
+  font-family: var(--font-display);
+  font-size: 36px;
+  line-height: 1.05;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.t-h1 {
+  font-family: var(--font-display);
+  font-size: 28px;
+  line-height: 1.1;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.t-title {
+  font-family: var(--font-display);
+  font-size: 22px;
+  line-height: 1.2;
+  font-weight: 700;
+}
+.t-sub {
+  font-family: var(--font-display);
+  font-size: 18px;
+  line-height: 1.25;
+  font-weight: 700;
+}
+.t-body {
+  font-size: 16px;
+  line-height: 1.5;
+}
+.t-label {
+  font-size: 14px;
+  line-height: 1.4;
+  font-weight: 500;
+}
+.t-btn {
+  font-size: 16px;
+  line-height: 1.2;
+  font-weight: 600;
+}
+.ff-display {
+  font-family: var(--font-display);
+}
+
+/* Dato héroe de la próxima dosis (v3 viral): 56–72 px según el ancho; en 390 px ≈ 62 px.
+   El sufijo "p. m." va más chico para que la hora entre en una línea a 360 px. */
+.t-dato {
+  font-family: var(--font-display);
+  font-size: clamp(56px, 16vw, 72px);
+  line-height: 1;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.t-dato-sufijo {
+  font-family: var(--font-display);
+  font-size: 22px;
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: 0;
+  margin-left: 0.3em;
+}
+
+/* Bloque de confianza (v3 viral): degradé de marca con texto claro. Texto sobre el degradé siempre en AA:
+   el texto va en la mitad izquierda o arriba del bloque (el extremo claro #3F86F2 solo recibe elementos
+   grandes o botones). Usa la variable de superficie (#FFFFFF) como texto, sin hex sueltos. */
+.bloque-confianza {
+  color: var(--surface);
+}
+.bloque-confianza .t-sobre-bloque {
+  color: color-mix(in oklab, var(--surface) 88%, transparent);
+}
+.bloque-confianza .chip-bloque {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  border-radius: var(--radius-button);
+  padding: 0.25rem 0.75rem;
+  background: color-mix(in oklab, var(--surface) 16%, transparent);
+  color: var(--surface);
+}
+.app-shell .bloque-confianza :is(a, button, input, textarea, select):focus-visible {
+  outline: 3px solid var(--surface);
+  outline-offset: 2px;
+}
+
+/* Modo simple del adulto mayor: letra muy grande, alto contraste. */
+.s-hero {
+  font-family: var(--font-display);
+  font-size: 48px;
+  line-height: 1.05;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+.s-body {
+  font-size: 28px;
+  line-height: 1.35;
+  font-weight: 500;
+}
+.s-btn {
+  font-family: var(--font-display);
+  font-size: 36px;
+  line-height: 1.1;
+  font-weight: 800;
+}
+
+/* Skeleton con la forma del contenido (CLS = 0). */
+.skeleton {
+  background: linear-gradient(
+    100deg,
+    color-mix(in oklab, var(--text-tertiary) 12%, transparent) 30%,
+    color-mix(in oklab, var(--text-tertiary) 22%, transparent) 50%,
+    color-mix(in oklab, var(--text-tertiary) 12%, transparent) 70%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+}
+@keyframes skeleton-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+  }
+}
+
+/* Foco visible y consistente en todo lo interactivo de la app. */
+.app-shell :is(a, button, input, textarea, select, [role='switch'], [role='radio']):focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Impresión del resumen para el médico: papel blanco, sin barras ni botones. */
+@media print {
+  @page {
+    margin: 16mm;
+  }
+  html,
+  body {
+    background: white !important;
+  }
+  .app-shell {
+    background: none !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+}

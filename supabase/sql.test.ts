@@ -1,0 +1,319 @@
+// Prueba los archivos SQL en un PostgreSQL real (PGlite, en memoria): que se ejecuten sin error, que la
+// retención haga lo que dice y que la seguridad se cumpla con DOS personas y los roles anon/authenticated
+// (RLS, atribución, funciones, libro de ingresos y enlace de compras). No toca ningún servicio.
+// Si cambias el esquema, esta prueba te avisa.
+
+import { PGlite } from '@electric-sql/pglite';
+import { readFileSync } from 'node:fs';
+import { describe, expect, it } from 'vitest';
+
+const leer = (f: string) => readFileSync(new URL(`./${f}`, import.meta.url), 'utf8');
+const C = '00000000-0000-0000-0000-000000000001';
+const M = '00000000-0000-0000-0000-0000000000a1';
+
+async function base() {
+  const db = new PGlite();
+  // Simula lo mínimo de Supabase: roles, el esquema auth (auth.users y auth.uid()) y los privilegios por defecto
+  // de public (anon y authenticated pueden tocar las tablas: lo que decide el acceso son RLS y las funciones revocadas).
+  await db.exec(`
+    create role anon; create role authenticated; create role service_role;
+    create schema auth;
+    create table auth.users (id uuid primary key default gen_random_uuid(), email text, email_confirmed_at timestamptz, raw_user_meta_data jsonb default '{}');
+    create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub', true),'')::uuid $$;
+    grant usage on schema auth to anon, authenticated, service_role;
+    grant usage on schema public to anon, authenticated, service_role;
+    alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
+    alter default privileges in schema public grant execute on functions to anon, authenticated, service_role;
+  `);
+  await db.exec(leer('schema.sql'));
+  await db.exec(leer('retencion.sql'));
+  const u = (await db.query<{ id: string }>(`insert into auth.users(email, email_confirmed_at) values ('a@x.com', now()) returning id`)).rows[0].id;
+  await db.exec(`insert into public.circles(id, created_by, patient_name) values ('${C}','${u}','Rosa')`);
+  await db.exec(`insert into public.subscriptions(user_id,status,plan) values ('${u}','active','mensual')`);
+  await db.exec(`insert into public.meds(id,circle_id,name,times,freq) values ('${M}','${C}','Losartán','{08:00}','{"kind":"daily"}')`);
+  return { db, u };
+}
+
+/** Ejecuta fn como el rol y el usuario indicados (como lo hace la API de Supabase) y deshace todo al terminar. */
+async function como<T>(db: PGlite, rol: 'anon' | 'authenticated', uid: string | null, fn: () => Promise<T>): Promise<T> {
+  await db.exec(`begin; set local role ${rol}; select set_config('request.jwt.claim.sub', '${uid ?? ''}', true);`);
+  try {
+    return await fn();
+  } finally {
+    await db.exec('rollback');
+  }
+}
+
+/** Organizadora A (paga), hermana B (miembro del círculo) y X (ajena, sin relación con la familia). */
+async function dosCuentas() {
+  const { db, u: A } = await base();
+  const B = (await db.query<{ id: string }>(`insert into auth.users(email, email_confirmed_at) values ('b@x.com', now()) returning id`)).rows[0].id;
+  const X = (await db.query<{ id: string }>(`insert into auth.users(email, email_confirmed_at) values ('x@x.com', now()) returning id`)).rows[0].id;
+  await db.exec(`insert into public.members(circle_id,user_id,name) values ('${C}','${B}','Bea')`);
+  return { db, A, B, X };
+}
+
+describe('SQL de Supabase (PostgreSQL real en memoria)', () => {
+  it('schema.sql y retencion.sql se ejecutan sin errores', async () => {
+    await expect(base()).resolves.toBeTruthy();
+  }, 60000);
+
+  it('un círculo pagando y sin actividad aparece como "pagador fantasma"; con actividad, no', async () => {
+    const { db, u } = await base();
+    expect((await db.query(`select * from public.retention_ghost_circles`)).rows).toHaveLength(1);
+    await db.exec(`insert into public.dose_logs(circle_id,med_id,dose_date,dose_time,given_by,given_by_name) values ('${C}','${M}',current_date,'08:00','${u}','Ana')`);
+    expect((await db.query(`select * from public.retention_ghost_circles`)).rows).toHaveLength(0);
+  }, 60000);
+
+  it('el resumen semanal cuenta dadas y no dadas por separado, sin nombres de medicinas', async () => {
+    const { db, u } = await base();
+    await db.exec(`insert into public.dose_logs(circle_id,med_id,dose_date,dose_time,given_by,given_by_name) values ('${C}','${M}',current_date,'08:00','${u}','Ana')`);
+    await db.exec(`insert into public.dose_logs(circle_id,med_id,dose_date,dose_time,given_by,given_by_name,skipped_reason) values ('${C}','${M}',current_date-1,'08:00','${u}','Ana','olvido')`);
+    const d = (await db.query<{ d: Record<string, unknown> }>(`select public.weekly_digest('${C}') as d`)).rows[0].d;
+    expect(d).toMatchObject({ dosis_dadas: 1, dosis_no_dadas: 1, novedades: 0, por_miembro: [{ nombre: 'Ana', dosis: 1 }] });
+    expect(JSON.stringify(d)).not.toContain('Losartán');
+  }, 60000);
+
+  it('un motivo de omisión inventado se rechaza', async () => {
+    const { db, u } = await base();
+    await expect(
+      db.exec(`insert into public.dose_logs(circle_id,med_id,dose_date,dose_time,given_by,given_by_name,skipped_reason) values ('${C}','${M}',current_date,'08:00','${u}','Ana','inventado')`)
+    ).rejects.toThrow();
+  }, 60000);
+
+  it('al borrar la cuenta de la última persona se borra el círculo y sus datos de salud (nada huérfano)', async () => {
+    const { db, u } = await base();
+    // (al crear el círculo, su creador ya queda como miembro)
+    await db.exec(`delete from auth.users where id='${u}'`);
+    expect((await db.query(`select 1 from public.circles where id='${C}'`)).rows).toHaveLength(0);
+    expect((await db.query(`select 1 from public.meds where circle_id='${C}'`)).rows).toHaveLength(0);
+  }, 60000);
+
+  it('con otro miembro, el círculo sigue al borrarse una cuenta', async () => {
+    const { db, u } = await base();
+    const u2 = (await db.query<{ id: string }>(`insert into auth.users(email) values ('b@x.com') returning id`)).rows[0].id;
+    await db.exec(`insert into public.members(circle_id,user_id,name) values ('${C}','${u2}','Bea')`);
+    await db.exec(`delete from auth.users where id='${u}'`);
+    expect((await db.query(`select 1 from public.circles where id='${C}'`)).rows).toHaveLength(1);
+  }, 60000);
+});
+
+describe('seguridad con dos personas y los roles anon / authenticated (RLS, funciones y atribución)', () => {
+  it('anon no ve ni escribe datos de ninguna familia', async () => {
+    const { db } = await dosCuentas();
+    // anon ni siquiera puede ejecutar las funciones de RLS (is_member): la lectura se rechaza.
+    await expect(como(db, 'anon', null, () => db.query(`select 1 from public.circles`))).rejects.toThrow(/permission denied/);
+    await expect(
+      como(db, 'anon', null, () =>
+        db.query(`insert into public.dose_logs(circle_id,med_id,dose_date,dose_time,given_by_name) values ('${C}','${M}',current_date,'07:00','Intruso')`)
+      )
+    ).rejects.toThrow();
+  }, 60000);
+
+  it('un ajeno no ve medicinas, círculos ni suscripciones de otra familia', async () => {
+    const { db, X } = await dosCuentas();
+    const cuenta = await como(db, 'authenticated', X, async () => ({
+      circulos: (await db.query(`select 1 from public.circles`)).rows.length,
+      medicinas: (await db.query(`select 1 from public.meds`)).rows.length,
+      suscripciones: (await db.query(`select 1 from public.subscriptions`)).rows.length,
+    }));
+    expect(cuenta).toEqual({ circulos: 0, medicinas: 0, suscripciones: 0 });
+  }, 60000);
+
+  it('un ajeno no puede registrar una dosis en el círculo', async () => {
+    const { db, X } = await dosCuentas();
+    await expect(
+      como(db, 'authenticated', X, () =>
+        db.query(`insert into public.dose_logs(circle_id,med_id,dose_date,dose_time,given_by_name) values ('${C}','${M}',current_date,'21:00','Intruso')`)
+      )
+    ).rejects.toThrow();
+  }, 60000);
+
+  it('un hermano ve la familia, y una dosis suya queda a su nombre aunque el navegador envíe otro autor', async () => {
+    const { db, A, B } = await dosCuentas();
+    const fila = await como(db, 'authenticated', B, async () => {
+      expect((await db.query(`select 1 from public.meds`)).rows).toHaveLength(1);
+      await db.query(
+        `insert into public.dose_logs(circle_id,med_id,dose_date,dose_time,given_by,given_by_name) values ('${C}','${M}',current_date,'20:00','${A}','Ana suplantada')`
+      );
+      return (await db.query<{ given_by: string; given_by_name: string }>(`select given_by, given_by_name from public.dose_logs where dose_time='20:00'`)).rows[0];
+    });
+    expect(fila).toEqual({ given_by: B, given_by_name: 'Bea' });
+  }, 60000);
+
+  it('una nota queda a nombre de quien la escribe (nombre de members), no del que envía el navegador', async () => {
+    const { db, A, B } = await dosCuentas();
+    const fila = await como(db, 'authenticated', B, async () => {
+      await db.query(
+        `insert into public.notes(circle_id,kind,body,author_id,author_name) values ('${C}','otra','Comió bien','${A}','Ana falsa')`
+      );
+      return (await db.query<{ author_id: string; author_name: string }>(`select author_id, author_name from public.notes`)).rows[0];
+    });
+    expect(fila).toEqual({ author_id: B, author_name: 'Bea' });
+  }, 60000);
+
+  it('con la suscripción de la organizadora vencida, los hermanos solo leen: no pueden registrar dosis', async () => {
+    const { db, A, B } = await dosCuentas();
+    await db.exec(`update public.subscriptions set status='expired' where user_id='${A}'`);
+    await expect(
+      como(db, 'authenticated', B, () =>
+        db.query(`insert into public.dose_logs(circle_id,med_id,dose_date,dose_time,given_by_name) values ('${C}','${M}',current_date,'22:00','Bea')`)
+      )
+    ).rejects.toThrow();
+    const lectura = await como(db, 'authenticated', B, async () => (await db.query(`select 1 from public.meds`)).rows.length);
+    expect(lectura).toBe(1);
+  }, 60000);
+
+  it('user_subscribed responde solo por la propia suscripción; suscripcion_vigente no se puede llamar', async () => {
+    const { db, A, X } = await dosCuentas();
+    const propia = await como(db, 'authenticated', A, async () => (await db.query<{ v: boolean }>(`select public.user_subscribed('${A}') as v`)).rows[0].v);
+    expect(propia).toBe(true);
+    const ajena = await como(db, 'authenticated', X, async () => (await db.query<{ v: boolean }>(`select public.user_subscribed('${A}') as v`)).rows[0].v);
+    expect(ajena).toBe(false);
+    await expect(como(db, 'authenticated', X, () => db.query(`select public.suscripcion_vigente('${A}')`))).rejects.toThrow();
+    await expect(como(db, 'anon', null, () => db.query(`select public.user_subscribed('${A}')`))).rejects.toThrow();
+  }, 60000);
+
+  it('circle_active solo responde a los miembros del círculo', async () => {
+    const { db, B, X } = await dosCuentas();
+    const dentro = await como(db, 'authenticated', B, async () => (await db.query<{ v: boolean }>(`select public.circle_active('${C}') as v`)).rows[0].v);
+    expect(dentro).toBe(true);
+    const fuera = await como(db, 'authenticated', X, async () => (await db.query<{ v: boolean }>(`select public.circle_active('${C}') as v`)).rows[0].v);
+    expect(fuera).toBe(false);
+  }, 60000);
+
+  it('nadie con sesión escribe suscripciones ni lee las compras pendientes', async () => {
+    const { db, A, X } = await dosCuentas();
+    await db.exec(`insert into public.pending_purchases(buyer_email,status,plan) values ('ajeno@x.com','active','mensual')`);
+    await expect(
+      como(db, 'authenticated', A, () => db.query(`insert into public.subscriptions(user_id,status,plan) values ('${X}','active','anual')`))
+    ).rejects.toThrow();
+    // Ahora el rol ni siquiera tiene privilegio sobre la tabla: se rechaza, no devuelve filas vacías.
+    await expect(como(db, 'authenticated', A, () => db.query(`select 1 from public.pending_purchases`))).rejects.toThrow(/permission denied/);
+  }, 60000);
+
+  it('TRUNCATE no es un atajo: RLS no lo filtra, así que el rol no tiene ese privilegio', async () => {
+    const { db, A } = await dosCuentas();
+    await expect(como(db, 'authenticated', A, () => db.exec(`truncate public.meds`))).rejects.toThrow(/permission denied/);
+    expect((await db.query(`select 1 from public.meds`)).rows).toHaveLength(1);
+  }, 60000);
+
+  it('un ajeno no ve a los miembros de la familia; un hermano sí los ve', async () => {
+    const { db, B, X } = await dosCuentas();
+    const deX = await como(db, 'authenticated', X, async () => (await db.query(`select 1 from public.members`)).rows.length);
+    const deB = await como(db, 'authenticated', B, async () => (await db.query(`select 1 from public.members`)).rows.length);
+    expect(deX).toBe(0);
+    expect(deB).toBe(2);
+  }, 60000);
+
+  it('un ajeno no edita ni borra medicinas de otra familia (no ve esa fila, no cambia nada)', async () => {
+    const { db, X } = await dosCuentas();
+    const editadas = await como(db, 'authenticated', X, async () => (await db.query(`update public.meds set name='Hackeado' where id='${M}' returning id`)).rows.length);
+    const borradas = await como(db, 'authenticated', X, async () => (await db.query(`delete from public.meds where id='${M}' returning id`)).rows.length);
+    expect(editadas).toBe(0);
+    expect(borradas).toBe(0);
+    expect((await db.query<{ name: string }>(`select name from public.meds where id='${M}'`)).rows[0].name).toBe('Losartán');
+  }, 60000);
+
+  it('solo el autor edita o borra una nota; la hermana no puede tocarla', async () => {
+    const { db, A, B } = await dosCuentas();
+    await db.exec(`insert into public.notes(circle_id,kind,body,author_id,author_name) values ('${C}','otra','Tomó agua','${A}','Ana')`);
+    const editadas = await como(db, 'authenticated', B, async () => (await db.query(`update public.notes set body='Cambiada' returning id`)).rows.length);
+    const borradas = await como(db, 'authenticated', B, async () => (await db.query(`delete from public.notes returning id`)).rows.length);
+    expect(editadas).toBe(0);
+    expect(borradas).toBe(0);
+    expect((await db.query<{ body: string }>(`select body from public.notes`)).rows[0].body).toBe('Tomó agua');
+  }, 60000);
+
+  it('un hermano no puede cambiar quién creó el círculo, pero sí editar los datos del familiar', async () => {
+    const { db, B } = await dosCuentas();
+    await expect(como(db, 'authenticated', B, () => db.query(`update public.circles set created_by='${B}' where id='${C}'`))).rejects.toThrow(/permission denied/);
+    const editadas = await como(db, 'authenticated', B, async () => (await db.query(`update public.circles set patient_name='Rosa M.' where id='${C}' returning id`)).rows.length);
+    expect(editadas).toBe(1);
+  }, 60000);
+
+  it('el consentimiento se guarda solo a nombre propio, y cada quien lee solo los suyos', async () => {
+    const { db, A, B } = await dosCuentas();
+    await db.exec(`insert into public.consents(user_id,purpose,text_version) values ('${A}','terms_privacy_adult','2026-10-10')`);
+    await expect(
+      como(db, 'authenticated', A, () => db.query(`insert into public.consents(user_id,purpose,text_version) values ('${B}','health_data','2026-10-10')`))
+    ).rejects.toThrow();
+    const ajenos = await como(db, 'authenticated', B, async () => (await db.query(`select 1 from public.consents`)).rows.length);
+    expect(ajenos).toBe(0);
+    const propias = await como(db, 'authenticated', A, async () => (await db.query(`insert into public.consents(user_id,purpose,text_version) values ('${A}','health_data','2026-10-10') returning id`)).rows.length);
+    expect(propias).toBe(1);
+  }, 60000);
+
+  it('los pagos no se leen ni se escriben desde el navegador, ni siquiera con sesión', async () => {
+    const { db, A } = await dosCuentas();
+    await db.exec(`insert into public.payment_events(hotmart_transaction,event,buyer_email,amount_minor,currency,payload) values ('T7','PURCHASE_APPROVED','a@x.com',5999,'USD','{}')`);
+    await expect(como(db, 'authenticated', A, () => db.query(`select 1 from public.payment_events`))).rejects.toThrow(/permission denied/);
+    await expect(
+      como(db, 'authenticated', A, () => db.query(`insert into public.payment_events(hotmart_transaction,event,buyer_email,payload) values ('T8','X','a@x.com','{}')`))
+    ).rejects.toThrow(/permission denied/);
+  }, 60000);
+});
+
+describe('libro de ingresos y enlace de compras', () => {
+  it('un cobro cuenta una sola vez, el reembolso resta y los avisos sin importe no suman', async () => {
+    const { db } = await base();
+    await db.exec(`insert into public.payment_events(hotmart_transaction,event,buyer_email,amount_minor,currency,payload) values
+      ('T1','PURCHASE_APPROVED','a@x.com',5999,'USD','{}'),
+      ('T1','PURCHASE_COMPLETE','a@x.com',null,'USD','{}'),
+      ('T2','PURCHASE_APPROVED','b@x.com',5999,'USD','{}'),
+      ('T1','PURCHASE_REFUNDED','a@x.com',-5999,'USD','{}')`);
+    const r = await db.query<{ neto: number; movimientos: number }>(
+      `select neto_unidades_menores::int as neto, movimientos::int as movimientos from public.libro_ingresos where currency='USD'`
+    );
+    expect(r.rows[0]).toEqual({ neto: 5999, movimientos: 3 });
+  }, 60000);
+
+  it('no se puede registrar un segundo cobro positivo para la misma transacción', async () => {
+    const { db } = await base();
+    await db.exec(`insert into public.payment_events(hotmart_transaction,event,buyer_email,amount_minor,currency,payload) values ('T9','PURCHASE_APPROVED','a@x.com',5999,'USD','{}')`);
+    await expect(
+      db.exec(`insert into public.payment_events(hotmart_transaction,event,buyer_email,amount_minor,currency,payload) values ('T9','OTRO_AVISO','a@x.com',5999,'USD','{}')`)
+    ).rejects.toThrow();
+  }, 60000);
+
+  it('el libro de ingresos no se lee desde el navegador', async () => {
+    const { db, u } = await base();
+    await expect(como(db, 'authenticated', u, () => db.query(`select * from public.libro_ingresos`))).rejects.toThrow();
+  }, 60000);
+
+  it('una compra que llegó antes que la cuenta se enlaza cuando la persona confirma su correo', async () => {
+    const { db } = await base();
+    await db.exec(`insert into public.pending_purchases(buyer_email,status,plan,current_period_end) values ('nueva@x.com','active','anual', now() + interval '30 days')`);
+    const id = (await db.query<{ id: string }>(`insert into auth.users(email) values ('Nueva@X.com') returning id`)).rows[0].id;
+    expect((await db.query(`select 1 from public.subscriptions where user_id='${id}'`)).rows).toHaveLength(0);
+    await db.exec(`update auth.users set email_confirmed_at = now() where id='${id}'`);
+    const sub = await db.query<{ plan: string; status: string }>(`select plan, status from public.subscriptions where user_id='${id}'`);
+    expect(sub.rows).toEqual([{ plan: 'anual', status: 'active' }]);
+    expect((await db.query(`select 1 from public.pending_purchases where buyer_email='nueva@x.com'`)).rows).toHaveLength(0);
+  }, 60000);
+
+  it('un plan desconocido se guarda como "desconocido", no como mensual', async () => {
+    const { db } = await base();
+    const id = (await db.query<{ id: string }>(`insert into auth.users(email) values ('d@x.com') returning id`)).rows[0].id;
+    await db.exec(`insert into public.subscriptions(user_id,status,plan) values ('${id}','active','desconocido')`);
+    expect((await db.query<{ plan: string }>(`select plan from public.subscriptions where user_id='${id}'`)).rows[0].plan).toBe('desconocido');
+    await expect(
+      db.exec(`insert into public.subscriptions(user_id,status,plan) values ('${(await db.query<{ id: string }>(`insert into auth.users(email) values ('e@x.com') returning id`)).rows[0].id}','active','inventado')`)
+    ).rejects.toThrow();
+  }, 60000);
+
+  it('un aviso sin nombre de plan no inventa uno: la fila nueva queda "desconocido"', async () => {
+    const { db } = await base();
+    const id = (await db.query<{ id: string }>(`insert into auth.users(email) values ('f@x.com') returning id`)).rows[0].id;
+    await db.exec(`insert into public.subscriptions(user_id,status) values ('${id}','active')`);
+    expect((await db.query<{ plan: string }>(`select plan from public.subscriptions where user_id='${id}'`)).rows[0].plan).toBe('desconocido');
+  }, 60000);
+
+  it('el mismo aviso (transacción + evento) no se anota dos veces: la base lo rechaza', async () => {
+    const { db } = await base();
+    await db.exec(`insert into public.payment_events(hotmart_transaction,event,buyer_email,payload) values ('T10','PURCHASE_COMPLETE','a@x.com','{}')`);
+    await expect(
+      db.exec(`insert into public.payment_events(hotmart_transaction,event,buyer_email,payload) values ('T10','PURCHASE_COMPLETE','a@x.com','{}')`)
+    ).rejects.toThrow();
+  }, 60000);
+});

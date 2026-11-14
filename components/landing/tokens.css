@@ -1,0 +1,126 @@
+/* ============================================================================
+   LANDING — tokens.css
+   EL ÚNICO ARCHIVO QUE SE TEMATIZA. Los componentes del kit consumen SOLO estas
+   variables: cambias estos valores con la ficha de arte del proyecto y toda la
+   landing cambia de piel sin tocar un .tsx.
+
+   Cómo se usa:
+   1. Ficha de arte aprobada. No inventes colores aquí.
+   2. Reemplazar TODOS los valores marcados "← reemplazar con la ficha de arte".
+   3. Importar este archivo en app/globals.css DESPUÉS de @import "tailwindcss".
+   4. Verificar contraste AA (≥4.5:1 texto / ≥3:1 UI) con los valores finales.
+
+   Reglas que NO cambian al tematizar:
+   - Ni #000 ni #FFF puros; casi-negro y casi-blanco CON tinte.
+   - El acento va SOLO en CTA y dato clave (60-30-10) — el kit ya lo aplica así.
+   - --chip-bg y los color-mix derivados se recalculan solos desde --accent.
+   ============================================================================ */
+
+/* Estados de la app (antes en app/app/tokens-app.css: aquí viven TODOS los colores). Los tintes de fondo
+   salen de color-mix; los "-text" cumplen AA sobre crema/blanco/tinte. */
+:root {
+  --ok: #5fae7e;
+  --ok-text: #2f7350;
+  --warn: #e8b84b;
+  --warn-text: #8a5a00;
+  /* Error: el color de la ficha de arte (#A12B3F, familia rojo-coral desaturado). Mismo valor que --error-text. */
+  --danger: #a12b3f;
+  --danger-text: #a12b3f;
+  /* Acento para texto pequeño sobre el tinte del acento (chips): ~7:1. */
+  --accent-strong: #1747a8;
+  /* Azul luz: solo para la mancha radial del dato héroe (no lleva texto encima). */
+  --accent-glow: #6fa3ff;
+}
+
+:root {
+  /* ── SUPERFICIES (3 niveles: base / elevada / hundida) ── */
+  --bg: #f3f7fd;              /* fondo base: blanco azulado, limpio y sereno */
+  --surface: #ffffff;         /* secciones elevadas y cards */
+  --surface-2: #e6eef9;       /* hundido: azul muy pálido */
+
+  /* ── TEXTO (azul-marino casi negro, familia única de neutros fríos) ── */
+  --text-primary: #0e1b33;
+  --text-secondary: #4b5b78;  /* ~6.3:1 sobre --bg */
+  --text-tertiary: #4b5b78;
+
+  /* ── MARCA ── */
+  --accent: #1f5bd6;          /* azul confianza: CTA, dato héroe, estado "te toca a ti", tab activo (~5.9:1 con texto claro) */
+  --accent-warm: #7fb0ff;     /* azul luz: SOLO manchas radiales y degradados (nunca texto ni relleno de CTA) */
+  --accent-2: #6d5fe6;        /* violeta-azul: 2ª nota decorativa, chips de variedad, nunca CTA */
+  --accent-strong: #1747a8;  /* acento fuerte para texto chico (≥4.5:1) */
+  --sun-text: #8a4b12;        /* texto sobre fondos durazno */
+  --sun: #ffb985;             /* durazno: la nota humana y cálida, en puntos mínimos (avatares, chispas) */
+  --navy: #0e1b33;            /* bloques oscuros premium */
+  --navy-2: #12306b;          /* extremo del degradado oscuro */
+
+  /* ── DEGRADADOS DE MARCA ── */
+  --grad-fin: #3f86f2;         /* extremo claro del degradado de marca (mismo valor de --grad-brand) */
+  --grad-brand: linear-gradient(135deg, #12306b 0%, #1f5bd6 58%, #3f86f2 100%);
+  --grad-soft: linear-gradient(160deg, #e4eeff 0%, #f3f7fd 62%);
+
+  /* ── FORMA (radios del brand kit — UNO por rol, toda la página) ── */
+  --radius-card: 22px;
+  --radius-button: 999px;      /* pill — botones y chips de ícono (chip queda circular) */
+
+  /* ── TIPOGRAFÍA (2 familias de la ficha — jamás Inter/Roboto/system-ui de marca) ── */
+  --font-display: var(--font-baloo), 'Baloo 2', Georgia, serif;
+  --font-body: var(--font-inter), 'Inter', 'Segoe UI', sans-serif;
+
+  /* ── SOMBRAS con el TINTE del acento (rgb 31 91 214 — nunca negro puro) ── */
+  --shadow-1: 0 1px 2px rgb(31 91 214 / 0.08);
+  --shadow-2: 0 12px 32px -12px rgb(31 91 214 / 0.26);
+  --shadow-soft: 0 0 0 1px rgb(31 91 214 / 0.1), 0 2px 4px rgb(31 91 214 / 0.07), 0 10px 22px -8px rgb(31 91 214 / 0.2);
+
+  /* ── SEMÁNTICO de error (rojo frío desaturado, nunca alarma pura) ── */
+  --error-text: #a12b3f;
+
+  /* ── DERIVADOS (no se tocan: se recalculan solos desde --accent) ── */
+  --chip-bg: color-mix(in oklab, var(--accent) 10%, transparent);
+}
+
+/* ============================================================================
+   EJEMPLO LLENO (referencia de cómo queda tematizado — NO copiar estos hex a
+   una app real: no sirven como plantilla de otra marca.
+   App ficticia de finanzas, modo oscuro DERIVADO, acento latón, display grotesk)
+
+:root {
+  --bg: #101216;
+  --surface: #171a21;
+  --surface-2: #12141a;
+  --text-primary: #e7e9ee;
+  --text-secondary: #9ca1ad;
+  --text-tertiary: #767c89;
+  --accent: #c9a24b;
+  --accent-2: #c9a24b;
+  --radius-card: 16px;
+  --radius-button: 12px;
+  --font-display: 'Archivo', 'Helvetica Neue', sans-serif;
+  --font-body: 'Instrument Sans', 'Segoe UI', sans-serif;
+  --shadow-1: 0 1px 2px rgb(5 6 10 / 0.5);
+  --shadow-2: 0 12px 32px -12px rgb(5 6 10 / 0.6);
+  --chip-bg: color-mix(in oklab, var(--accent) 10%, transparent);
+}
+============================================================================ */
+
+/* Base mínima que el kit asume (no tematizar) */
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 64px; /* el StickyMiniHeader (56px) no debe tapar el destino de #oferta */
+}
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+body {
+  background: var(--bg);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+}
+
+/* Foco visible y uniforme en toda la plantilla (3 px, como en la app y el recorrido). :where mantiene
+   la especificidad en cero: un componente con su propio foco lo sigue sobrescribiendo. */
+:where(a, button, summary, input, textarea, select, [role='button'], [role='switch'], [role='radio']):focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}

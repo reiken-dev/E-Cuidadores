@@ -1,0 +1,22 @@
+// Alta de cuenta: guarda los consentimientos de la persona recién registrada.
+// Cópialo a lib/alta.ts (o similar) y llámalo DESPUÉS de crear la cuenta en Supabase Auth y ANTES de llevarla a /app.
+// Requiere: lib/consentimientos.ts (incluido), supabase/schema.sql (tabla consents con su política de inserción propia).
+// ⚠️ Sin este registro no publiques: las casillas de salud y de términos deben quedar guardadas con la versión del texto.
+// [VERIFICAR: versión de @supabase/supabase-js y la forma de pasar el token de la sesión recién creada (Authorization)]
+import { createClient } from '@supabase/supabase-js';
+import { filasDeAlta } from '@/lib/consentimientos';
+
+export async function registrarConsentimientos(
+  userId: string,
+  accessToken: string,
+  aceptados: { terminos: boolean; salud: boolean }
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const filas = filasDeAlta(userId, aceptados);
+  if (!filas) return { ok: false, error: 'faltan consentimientos' };
+  const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
+    global: { headers: { Authorization: `Bearer ${accessToken}` } },
+  });
+  // La política "dar mis consentimientos" solo deja insertar filas con tu propio user_id.
+  const { error } = await db.from('consents').insert(filas);
+  return error ? { ok: false, error: 'no se pudieron guardar los consentimientos' } : { ok: true };
+}

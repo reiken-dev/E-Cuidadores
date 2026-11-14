@@ -1,0 +1,17 @@
+// lib/enviar-correo.ts — envía con Resend por fetch (sin dependencias). ⚠️ Requiere RESEND_API_KEY y un dominio verificado.
+import { renderCorreo, type SecuenciaId, type Valores } from '@/lib/correos';
+import { MARCA } from '@/lib/marca';
+
+export async function enviarCorreo(id: SecuenciaId, para: string, valores: Valores, bajaUrl?: string) {
+  const c = renderCorreo(id, valores, { bajaUrl });
+  const html = `<div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;color:#0E1B33">
+    ${c.texto.split('\n\n').map((p) => `<p>${p.replace(/https?:\/\/\S+/g, '')}</p>`).join('')}
+    <p><a href="${c.boton.url}" style="background:#1F5BD6;color:#fff;padding:12px 20px;border-radius:999px;text-decoration:none;display:inline-block">${c.boton.texto}</a></p>
+    ${c.bajaUrl ? `<p style="font-size:12px;color:#4B5B78"><a href="${c.bajaUrl}">Darme de baja de estos correos</a></p>` : ''}</div>`;
+  const r = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from: process.env.EMAIL_FROM ?? `${MARCA.nombre} <no-responder@TU-DOMINIO.com>`, reply_to: MARCA.soporteEmail, to: [para], subject: c.asunto, text: c.texto, html }),
+  });
+  if (!r.ok) throw new Error(`Resend respondió ${r.status}`);
+}

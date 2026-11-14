@@ -1,0 +1,21 @@
+// lib/sesion.ts → sesionDelServidor(): lee la sesión de Supabase en el servidor, desde las cookies.
+// Sustituye el "return null" de lib/sesion.ts por lo de abajo y quita el marcador [COMPLETAR] de ese archivo.
+// Requiere: npm install @supabase/supabase-js @supabase/ssr
+// [VERIFICAR: versiones de @supabase/ssr y la firma de createServerClient (getAll / setAll) antes de usarlo]
+import { cookies } from 'next/headers';
+import { createServerClient } from '@supabase/ssr';
+
+export async function sesionDelServidor(): Promise<{ userId: string } | null> {
+  const almacen = await cookies();
+  const db = createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
+    cookies: {
+      getAll: () => almacen.getAll(),
+      setAll: () => {
+        // En un layout no se pueden escribir cookies: el refresco de la sesión va en middleware.ts (ver la guía de Supabase).
+      },
+    },
+  });
+  // getUser() valida el token con el servidor de Supabase. No uses solo getSession(): no comprueba nada en el servidor.
+  const { data } = await db.auth.getUser();
+  return data.user ? { userId: data.user.id } : null;
+}
