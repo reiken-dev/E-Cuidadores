@@ -55,7 +55,14 @@ describe('GET /auth/callback', () => {
     crearClienteServidor.mockResolvedValue(db({ user: null }));
     expect(destino(await pedir('/auth/callback'))).toBe(`${ORIGEN}/entrar?error=acceso`);
   });
-  it('si el registro de consentimientos falla, cierra la sesión', async () => {
+  it('con una casilla sin marcar en el metadata, va a /aceptar y conserva la sesión', async () => {
+    const cliente = db();
+    crearClienteServidor.mockResolvedValue(cliente);
+    registrarConsentimientos.mockResolvedValue({ ok: false, error: 'faltan consentimientos', incompletos: true });
+    expect(destino(await pedir('/auth/callback?code=abc'))).toBe(`${ORIGEN}/aceptar`);
+    expect(cliente.auth.signOut).not.toHaveBeenCalled();
+  });
+  it('si el registro de consentimientos falla al guardar, cierra la sesión', async () => {
     const cliente = db();
     crearClienteServidor.mockResolvedValue(cliente);
     registrarConsentimientos.mockResolvedValue({ ok: false, error: 'x' });
@@ -76,6 +83,11 @@ describe('GET /auth/callback', () => {
     crearClienteServidor.mockResolvedValue(db());
     expect(destino(await pedir('/auth/callback?code=abc&next=//evil.com'))).toBe(`${ORIGEN}/app`);
     expect(destino(await pedir('/auth/callback?code=abc&next=https://evil.com'))).toBe(`${ORIGEN}/app`);
+  });
+  it('con NEXT_PUBLIC_SITE_URL mal escrita no se cae: usa el origen de la petición', async () => {
+    process.env.NEXT_PUBLIC_SITE_URL = 'esto no es una url';
+    crearClienteServidor.mockResolvedValue(db());
+    expect(destino(await pedir('/auth/callback?code=abc'))).toBe(`${ORIGEN}/app`);
   });
   it('prefiere NEXT_PUBLIC_SITE_URL al host de la petición', async () => {
     process.env.NEXT_PUBLIC_SITE_URL = 'https://publico.test/ruta';

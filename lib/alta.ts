@@ -8,7 +8,8 @@
 import type { SupabaseClient, User } from '@supabase/supabase-js';
 import { filasDeAlta, type FinalidadConsentimiento } from './consentimientos';
 
-export type ResultadoAlta = { ok: true; guardados: boolean } | { ok: false; error: string };
+/** `incompletos`: faltó marcar alguna casilla (se resuelve en /aceptar). Sin él, fue un fallo al guardar. */
+export type ResultadoAlta = { ok: true; guardados: boolean } | { ok: false; error: string; incompletos?: true };
 
 /** Finalidades sin las cuales no se entra a /app. analytics y marketing no cuentan. */
 export const FINALIDADES_OBLIGATORIAS: FinalidadConsentimiento[] = ['terms_privacy_adult', 'health_data'];
@@ -39,7 +40,7 @@ export async function guardarConsentimientos(
   aceptados: { terminos: boolean; salud: boolean }
 ): Promise<ResultadoAlta> {
   const filas = filasDeAlta(userId, aceptados);
-  if (!filas) return { ok: false, error: 'faltan consentimientos' };
+  if (!filas) return { ok: false, error: 'faltan consentimientos', incompletos: true };
   if (await tieneConsentimientos(db)) return { ok: true, guardados: false };
   const { error } = await db.from('consents').insert(filas);
   return error ? { ok: false, error: 'no se pudieron guardar los consentimientos' } : { ok: true, guardados: true };

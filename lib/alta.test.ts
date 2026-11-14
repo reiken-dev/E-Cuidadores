@@ -40,7 +40,11 @@ describe('tieneConsentimientos', () => {
 describe('guardarConsentimientos', () => {
   it('sin las dos casillas no inserta', async () => {
     const { db, insert } = dbDoble();
-    expect((await guardarConsentimientos(db, 'u1', { terminos: true, salud: false })).ok).toBe(false);
+    expect(await guardarConsentimientos(db, 'u1', { terminos: true, salud: false })).toEqual({
+      ok: false,
+      error: 'faltan consentimientos',
+      incompletos: true,
+    });
     expect(insert).not.toHaveBeenCalled();
   });
   it('con las dos casillas inserta una fila por finalidad con la versión del texto', async () => {
@@ -62,7 +66,9 @@ describe('guardarConsentimientos', () => {
     expect(insert).toHaveBeenCalledTimes(1);
   });
   it('error al insertar devuelve ok:false', async () => {
-    expect((await guardarConsentimientos(dbDoble({ errorInsert: true }).db, 'u1', { terminos: true, salud: true })).ok).toBe(false);
+    const r = await guardarConsentimientos(dbDoble({ errorInsert: true }).db, 'u1', { terminos: true, salud: true });
+    expect(r.ok).toBe(false);
+    expect('incompletos' in r).toBe(false);
   });
 });
 
