@@ -1,37 +1,11 @@
 import type { NextConfig } from "next";
+import { construirCsp } from "./lib/csp";
 
 const isDev = process.env.NODE_ENV !== "production";
 
-// CONTENT-SECURITY-POLICY
-// Decisión: un CSP con "nonce" por petición obligaría a que TODAS las páginas sean
-// dinámicas (se pierde el prerenderizado estático) y a tocar el layout raíz. Para una plantilla
-// que se publica en Vercel usamos un CSP por cabecera fija y válido:
-//  - script-src permite 'unsafe-inline' porque Next.js inyecta pequeños scripts en línea para
-//    hidratar la página; en desarrollo también 'unsafe-eval' (lo necesita el recargado en vivo).
-//  - style-src permite 'unsafe-inline' porque React/Motion escriben estilos en línea (style="...").
-//  - Las fuentes de next/font se descargan al construir y se sirven desde el propio dominio,
-//    por eso font-src es 'self' (no hace falta abrir fonts.googleapis.com).
-//  - Todo lo demás queda cerrado: sin frames, sin objetos, sin formularios hacia otros sitios.
-// PARA EL COMPRADOR: al conectar servicios externos, abre SOLO el dominio que uses y solo en la
-// directiva que corresponda. Ejemplos: Supabase -> connect-src https://TU-PROYECTO.supabase.co
-// (y wss:// del mismo dominio para tiempo real); analítica -> script-src y connect-src de su dominio.
-// Si más adelante quieres un CSP estricto con nonce, sigue la guía de Next.js "Content Security Policy".
-const csp = [
-  "default-src 'self'",
-  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob:",
-  "font-src 'self' data:",
-  `connect-src 'self'${isDev ? " ws: wss:" : ""}`,
-  "manifest-src 'self'",
-  "worker-src 'self' blob:",
-  "media-src 'self'",
-  "object-src 'none'",
-  "base-uri 'self'",
-  "form-action 'self'",
-  "frame-ancestors 'none'",
-  ...(isDev ? [] : ["upgrade-insecure-requests"]),
-].join("; ");
+// CONTENT-SECURITY-POLICY: la política y su explicación están en lib/csp.ts (con pruebas).
+// El origen de Supabase se abre solo si NEXT_PUBLIC_SUPABASE_URL está definida.
+const csp = construirCsp({ dev: isDev, supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL });
 
 const securityHeaders = [
   { key: "Content-Security-Policy", value: csp },
