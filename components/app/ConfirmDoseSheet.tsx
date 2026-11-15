@@ -12,7 +12,7 @@ import { MemberPicker, TimePicker } from './pickers';
 import { useFeedback } from './Feedback';
 import { atTime, floorTo5, fmtTime, timeFromMs } from '@/lib/dates';
 import { giverFor, nameOf, type DoseInstance } from '@/lib/schedule';
-import { actions } from '@/lib/store';
+import { actions, MODO_REMOTO } from '@/lib/store';
 import { sincroTexto } from '@/lib/oferta';
 import { SKIP_REASONS, type AppData, type SkipReason } from '@/lib/types';
 
@@ -142,7 +142,8 @@ export function ConfirmDoseSheet({
         )}
         <MemberPicker
           label={modo === 'dada' ? 'Quién la dio' : 'Quién lo anota'}
-          members={data.members}
+          // Con cuentas reales el servidor firma siempre con quien tiene la sesión: no se ofrece a otro hermano.
+          members={MODO_REMOTO ? data.members.filter((m) => m.id === data.currentUserId) : data.members}
           value={byId}
           onChange={(id) => {
             setById(id);

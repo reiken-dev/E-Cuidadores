@@ -18,6 +18,7 @@ import { DIAS_DE_DOSIS } from '@/lib/datos/remoto';
 import { MARCA } from '@/lib/marca';
 import { INVITACION_CONECTADA } from '@/lib/oferta';
 import { track } from '@/lib/analytics';
+import { crearInvitacion, leerInvitacion, revocarInvitacion, type InvitacionActiva, type RespuestaInvitacion } from '@/app/unirme/actions';
 import type { AppData, RemindHours } from '@/lib/types';
 
 const urlAcceso = () => `${window.location.origin}/entrar`;
@@ -67,13 +68,9 @@ export default function FamiliaScreen() {
   const [borrar, setBorrar] = useState(false);
   const [salir, setSalir] = useState(false);
   const p = data.profile;
-  // El código de invitación es al azar: se crea la primera vez y se conserva. No sale del nombre de nadie.
-  // Cuando conectes la invitación, el servidor debe guardar ese código y validarlo.
-  useEffect(() => {
-    if (!data.codigoCirculo) actions.ensureCodigoCirculo();
-  }, [data.codigoCirculo]);
-  // Sin la ruta /unirme (requiere servidor) el mensaje no lleva enlace: así nunca se envía un enlace que da 404.
-  const enlace = INVITACION_CONECTADA && data.codigoCirculo ? `${MARCA.sitioUrl}/unirme/${data.codigoCirculo}` : null;
+  // Con cuentas reales, solo quien creó el círculo (el organizador) invita: el servidor lo vuelve a comprobar.
+  // En la demostración no hay enlace (no hay servidor): el mensaje se comparte sin él.
+  const puedeInvitar = !MODO_REMOTO || (INVITACION_CONECTADA && data.members.find((m) => m.id === data.currentUserId)?.role === 'Organizador');
 
   return (
     <div className="flex flex-col gap-4">
@@ -99,10 +96,12 @@ export default function FamiliaScreen() {
             </li>
           ))}
         </ul>
-        <Btn variant="soft" size="lg" full className="mt-2" onClick={() => setInvitar(true)}>
-          <UserPlus size={20} aria-hidden="true" />
-          Invitar a un hermano
-        </Btn>
+        {puedeInvitar && (
+          <Btn variant="soft" size="lg" full className="mt-2" onClick={() => setInvitar(true)}>
+            <UserPlus size={20} aria-hidden="true" />
+            Invitar a un hermano
+          </Btn>
+        )}
       </Card>
 
       {/* Perfil del familiar */}
@@ -306,7 +305,7 @@ export default function FamiliaScreen() {
         }}
       />
 
-      <InvitarSheet open={invitar} onOpenChange={setInvitar} enlace={enlace} />
+      <InvitarSheet open={invitar && puedeInvitar} onOpenChange={setInvitar} />
       <PerfilSheet key={perfilKey} open={editar} onOpenChange={setEditar} data={data} />
       <ConfirmSheet
         open={reset}
@@ -363,15 +362,7 @@ function mensajeInvitacion(enlace: string | null): string {
   return enlace ? `${base} ${enlace}` : base;
 }
 
-function InvitarSheet({
-  open,
-  onOpenChange,
-  enlace,
-}: {
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-  enlace: string | null;
-}) {
+function InvitarSheet({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
   return (
     <Sheet
       open={open}
@@ -379,8 +370,80 @@ function InvitarSheet({
       title="Invitar a un hermano"
       description="Edita y comparte el mensaje. La tarjeta no incluye datos personales ni de salud."
     >
-      <ContenidoInvitacion enlace={enlace} />
+      {MODO_REMOTO ? <InvitacionRemota /> : <ContenidoInvitacion enlace={null} />}
     </Sheet>
+  );
+}
+
+const formatoVence = (iso: string) => new Date(iso).toLocaleDateString('es', { day: 'numeric', month: 'long' });
+
+// Con cuentas reales el enlace lo crea el servidor: un código al azar que vence en 7 días y se puede revocar.
+function InvitacionRemota() {
+  const [inv, setInv] = useState<InvitacionActiva | null | undefined>(undefined);
+  const [error, setError] = useState('');
+  const [ocupado, setOcupado] = useState(false);
+
+  useEffect(() => {
+    let vigente = true;
+    leerInvitacion()
+      .then((r) => {
+        if (!vigente) return;
+        if (r.ok) setInv(r.invitacion);
+        else setError(r.error);
+      })
+      .catch(() => vigente && setError('No pudimos cargar tu invitación. Revisa tu conexión.'));
+    return () => {
+      vigente = false;
+    };
+  }, []);
+
+  async function ejecutar(accion: () => Promise<RespuestaInvitacion>) {
+    if (ocupado) return;
+    setOcupado(true);
+    setError('');
+    try {
+      const r = await accion();
+      if (r.ok) setInv(r.invitacion);
+      else setError(r.error);
+    } catch {
+      setError('No pudimos completarlo. Revisa tu conexión e inténtalo de nuevo.');
+    }
+    setOcupado(false);
+  }
+
+  if (inv === undefined && !error) return <p role="status" className="t-body text-[var(--text-secondary)]">Cargando…</p>;
+  const enlace = inv ? `${MARCA.sitioUrl}/unirme/${inv.codigo}` : null;
+  return (
+    <div className="flex flex-col gap-4">
+      {error && (
+        <p role="alert" className="t-body text-[var(--error-text)]">
+          {error}
+        </p>
+      )}
+      {inv && enlace ? (
+        <>
+          <p className="t-body text-[var(--text-secondary)]">
+            Cualquiera que abra este enlace entra al círculo. Vence el {formatoVence(inv.venceEl)}. Si lo compartiste por error, revócalo.
+          </p>
+          <ContenidoInvitacion key={enlace} enlace={enlace} />
+          <Btn variant="secondary" size="lg" full disabled={ocupado} onClick={() => void ejecutar(() => crearInvitacion())}>
+            Crear un enlace nuevo
+          </Btn>
+          <Btn variant="soft" size="lg" full disabled={ocupado} onClick={() => void ejecutar(() => revocarInvitacion(inv.id))}>
+            Revocar este enlace
+          </Btn>
+        </>
+      ) : (
+        <>
+          <p className="t-body text-[var(--text-secondary)]">
+            Crea un enlace para tus hermanos. Entran sin pagar, ven lo que anotas y pueden anotar. Dura 7 días y lo puedes revocar.
+          </p>
+          <Btn variant="primary" size="lg" full disabled={ocupado} onClick={() => void ejecutar(() => crearInvitacion())}>
+            {ocupado ? 'Creando…' : 'Crear enlace de invitación'}
+          </Btn>
+        </>
+      )}
+    </div>
   );
 }
 

@@ -513,3 +513,118 @@ describe('datos reales (datos-reales.sql)', () => {
     ).rejects.toThrow();
   }, 60000);
 });
+
+describe('invitaciones (invitaciones.sql)', () => {
+  const CODIGO = 'K7QD-3MPX';
+  async function conInvitaciones() {
+    const t = await dosCuentas();
+    await t.db.exec(leer('datos-reales.sql'));
+    await t.db.exec(leer('invitaciones.sql'));
+    return t;
+  }
+  const nuevaCuenta = async (db: PGlite, correo: string) =>
+    (await db.query<{ id: string }>(`insert into auth.users(email, email_confirmed_at) values ('${correo}', now()) returning id`)).rows[0].id;
+  const crear = (A: string, code = CODIGO) => `select public.crear_invitacion('${C}','${A}','${code}') as vence`;
+  const unir = (u: string, code = CODIGO, nombre = 'Carlos') => `select public.unirse_con_codigo('${code}','${u}','${nombre}') as r`;
+  const miembros = async (db: PGlite) => Number((await db.query<{ n: string }>(`select count(*) as n from public.members where circle_id = '${C}'`)).rows[0].n);
+
+  it('se ejecuta sin errores y dos veces seguidas (idempotente)', async () => {
+    const { db } = await conInvitaciones();
+    await expect(db.exec(leer('invitaciones.sql'))).resolves.not.toThrow();
+  }, 60000);
+
+  it('el organizador crea el código y quien lo usa entra como miembro', async () => {
+    const { db, A } = await conInvitaciones();
+    const N = await nuevaCuenta(db, 'n@x.com');
+    const vence = (await db.query<{ vence: Date }>(crear(A))).rows[0].vence;
+    expect(new Date(vence).getTime()).toBeGreaterThan(Date.now() + 6 * 24 * 3600 * 1000);
+    expect((await db.query<{ r: string }>(unir(N))).rows[0].r).toBe('ok');
+    const fila = (await db.query<{ name: string; role: string }>(`select name, role from public.members where user_id = '${N}'`)).rows[0];
+    expect(fila).toEqual({ name: 'Carlos', role: 'Hermano/a' });
+  }, 60000);
+
+  it('quien no creó el círculo no puede crear invitaciones', async () => {
+    const { db, B } = await conInvitaciones();
+    expect((await db.query<{ vence: unknown }>(crear(B))).rows[0].vence).toBeNull();
+    expect(Number((await db.query<{ n: number }>(`select count(*) as n from public.invitations`)).rows[0].n)).toBe(0);
+  }, 60000);
+
+  it('código inexistente, vencido o revocado: la misma respuesta «invalida»', async () => {
+    const { db, A } = await conInvitaciones();
+    const N = await nuevaCuenta(db, 'n@x.com');
+    await db.query(crear(A));
+    const id = (await db.query<{ id: string }>(`select id from public.invitations`)).rows[0].id;
+    expect((await db.query<{ r: string }>(unir(N, 'ZZZZ-ZZZZ'))).rows[0].r).toBe('invalida');
+    await db.exec(`update public.invitations set expires_at = now() - interval '1 minute'`);
+    expect((await db.query<{ r: string }>(unir(N))).rows[0].r).toBe('invalida');
+    await db.exec(`update public.invitations set expires_at = now() + interval '1 day'`);
+    expect((await db.query<{ r: boolean }>(`select public.revocar_invitacion('${id}','${A}') as r`)).rows[0].r).toBe(true);
+    expect((await db.query<{ r: string }>(unir(N))).rows[0].r).toBe('invalida');
+    expect(await miembros(db)).toBe(2);
+  }, 60000);
+
+  it('solo el organizador revoca; crear una nueva revoca la anterior', async () => {
+    const { db, A, B } = await conInvitaciones();
+    const N = await nuevaCuenta(db, 'n@x.com');
+    await db.query(crear(A));
+    const id = (await db.query<{ id: string }>(`select id from public.invitations`)).rows[0].id;
+    expect((await db.query<{ r: boolean }>(`select public.revocar_invitacion('${id}','${B}') as r`)).rows[0].r).toBe(false);
+    await db.query(crear(A, 'AAAA-2222'));
+    expect((await db.query<{ r: string }>(unir(N))).rows[0].r).toBe('invalida');
+    expect((await db.query<{ r: string }>(unir(N, 'AAAA-2222'))).rows[0].r).toBe('ok');
+  }, 60000);
+
+  it('tope de 12 miembros', async () => {
+    const { db, A } = await conInvitaciones();
+    await db.query(crear(A));
+    for (let i = 0; i < 10; i++) {
+      const u = await nuevaCuenta(db, `m${i}@x.com`);
+      expect((await db.query<{ r: string }>(unir(u))).rows[0].r).toBe('ok');
+    }
+    expect(await miembros(db)).toBe(12);
+    const extra = await nuevaCuenta(db, 'extra@x.com');
+    expect((await db.query<{ r: string }>(unir(extra))).rows[0].r).toBe('lleno');
+    expect(await miembros(db)).toBe(12);
+  }, 60000);
+
+  it('repetir es idempotente y quien ya está en otro círculo no entra', async () => {
+    const { db, A } = await conInvitaciones();
+    const N = await nuevaCuenta(db, 'n@x.com');
+    await db.query(crear(A));
+    await db.query(unir(N));
+    expect((await db.query<{ r: string }>(unir(N))).rows[0].r).toBe('ok');
+    expect(await miembros(db)).toBe(3);
+    const O = await nuevaCuenta(db, 'o@x.com');
+    const otro = '00000000-0000-0000-0000-000000000002';
+    await db.exec(`insert into public.circles(id, created_by, patient_name) values ('${otro}','${O}','Otro')`);
+    expect((await db.query<{ r: string }>(unir(O))).rows[0].r).toBe('ya_en_circulo');
+  }, 60000);
+
+  it('un nombre vacío o demasiado largo se rechaza', async () => {
+    const { db, A } = await conInvitaciones();
+    const N = await nuevaCuenta(db, 'n@x.com');
+    await db.query(crear(A));
+    expect((await db.query<{ r: string }>(unir(N, CODIGO, '   '))).rows[0].r).toBe('invalida');
+    expect((await db.query<{ r: string }>(unir(N, CODIGO, 'x'.repeat(81)))).rows[0].r).toBe('invalida');
+  }, 60000);
+
+  it('anon y authenticated no ejecutan las funciones ni escriben invitaciones; solo el organizador las ve', async () => {
+    const { db, A, B, X } = await conInvitaciones();
+    await db.query(crear(A));
+    for (const rol of ['anon', 'authenticated'] as const) {
+      await como(db, rol, B, async () => {
+        await expect(db.query(crear(B))).rejects.toThrow();
+        await expect(db.query(unir(X))).rejects.toThrow();
+        await expect(db.query(`select public.revocar_invitacion(gen_random_uuid(),'${B}')`)).rejects.toThrow();
+      });
+    }
+    await como(db, 'authenticated', B, async () => {
+      await expect(db.query(`insert into public.invitations(circle_id, code, expires_at) values ('${C}','BBBB-3333', now())`)).rejects.toThrow();
+      await expect(db.query(`update public.invitations set revoked_at = null`)).rejects.toThrow();
+    });
+    await como(db, 'authenticated', A, async () => expect((await db.query(`select 1 from public.invitations`)).rows).toHaveLength(1));
+    await como(db, 'authenticated', B, async () => expect((await db.query(`select 1 from public.invitations`)).rows).toHaveLength(0));
+    await como(db, 'authenticated', X, async () => expect((await db.query(`select 1 from public.invitations`)).rows).toHaveLength(0));
+    await como(db, 'service_role', null, async () => expect((await db.query(unir(X))).rows[0]).toEqual({ r: 'ok' }));
+  }, 60000);
+});

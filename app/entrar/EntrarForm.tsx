@@ -14,6 +14,7 @@
 
 import { crearClienteNavegador } from '@/lib/supabase/navegador';
 import { MARCA } from '@/lib/marca';
+import { normalizarCodigo, rutaUnirme } from '@/lib/invitacion';
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Check, Circle, CircleAlert, Eye, EyeOff, Mail } from 'lucide-react';
@@ -151,7 +152,9 @@ export default function EntrarForm() {
   // ── Acceso real (Supabase conectado) ──────────────────────────────────────
   // La contraseña va directo a Supabase Auth: no se guarda ni se escribe en ningún log.
   function urlDeVuelta() {
-    return `${window.location.origin}/auth/callback?next=/app`;
+    // Con un enlace de invitación (?unirme=CÓDIGO) la vuelta pasa por /unirme: primero se entra al círculo, no a crear uno.
+    const codigo = normalizarCodigo(params.get('unirme'));
+    return `${window.location.origin}/auth/callback?next=${codigo ? rutaUnirme(codigo) : '/app'}`;
   }
 
   async function accesoReal() {

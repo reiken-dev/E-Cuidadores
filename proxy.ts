@@ -1,4 +1,4 @@
-// Proxy de Next 16 (antes "middleware"). SOLO refresca las cookies de sesión de Supabase en /app, /entrar y /aceptar.
+// Proxy de Next 16 (antes "middleware"). SOLO refresca las cookies de sesión de Supabase en /app, /entrar, /aceptar y /unirme.
 // La autorización NO se decide aquí: la hace app/app/layout.tsx con sesionDelServidor().
 // Con Supabase desconectado (demostración) o sin variables de entorno, no hace nada.
 import { NextResponse, type NextRequest } from 'next/server';
@@ -33,4 +33,4 @@ export async function proxy(request: NextRequest) {
   return respuesta;
 }
 
-export const config = { matcher: ['/app/:path*', '/entrar', '/aceptar'] };
+export const config = { matcher: ['/app/:path*', '/entrar', '/aceptar', '/unirme/:path*'] };
