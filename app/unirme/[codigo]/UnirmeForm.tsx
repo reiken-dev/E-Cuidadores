@@ -18,7 +18,7 @@ const urlApp = () => `${window.location.origin}/app`;
  * Pantalla del enlace de invitación. No muestra datos de la familia: solo invita a entrar.
  * `codigo` null = el enlace no tiene la forma válida. `sesion` = ya hay una cuenta abierta (y con sus aceptaciones).
  */
-export default function UnirmeForm({ codigo, sesion }: { codigo: string | null; sesion: boolean }) {
+export default function UnirmeForm({ codigo, sesion, yaTieneCirculo = false }: { codigo: string | null; sesion: boolean; yaTieneCirculo?: boolean }) {
   const [nombre, setNombre] = useState('');
   const [error, setError] = useState('');
   const [ocupado, setOcupado] = useState(false);
@@ -72,6 +72,16 @@ export default function UnirmeForm({ codigo, sesion }: { codigo: string | null; 
                 Ya tengo cuenta
               </Link>
             </div>
+          </>
+        ) : yaTieneCirculo ? (
+          <>
+            <h1 className="text-[28px] font-bold leading-[1.15] text-[var(--text-primary)] [font-family:var(--font-display)]">Tu cuenta ya tiene un círculo</h1>
+            <p className="mt-2 text-[16px] leading-snug text-[var(--text-secondary)]">
+              Una cuenta solo puede estar en un círculo. Para unirte a este, cierra sesión y abre el enlace con otra cuenta.
+            </p>
+            <Link href="/app" className={`${BOTON_SUAVE} mt-5`}>
+              Ir a mi círculo
+            </Link>
           </>
         ) : (
           <>

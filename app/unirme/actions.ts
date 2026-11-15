@@ -42,8 +42,14 @@ export async function unirme(codigo: unknown, nombre: unknown): Promise<Respuest
   if (!(await tieneConsentimientos(sesion.db))) return { ok: false, error: 'Falta aceptar los términos. Recarga la página.' };
   const servicio = crearClienteServicio();
   if (!servicio) return { ok: false, error: GENERICO };
-  const { data, error } = await servicio.rpc('unirse_con_codigo', { p_code: c, p_user: sesion.userId, p_name: n });
-  if (error) return { ok: false, error: GENERICO };
+  let data: unknown;
+  try {
+    const r = await servicio.rpc('unirse_con_codigo', { p_code: c, p_user: sesion.userId, p_name: n });
+    if (r.error) return { ok: false, error: GENERICO };
+    data = r.data;
+  } catch {
+    return { ok: false, error: GENERICO };
+  }
   switch (data) {
     case 'ok':
       return { ok: true };

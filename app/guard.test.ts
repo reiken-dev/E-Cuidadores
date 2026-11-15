@@ -119,8 +119,17 @@ describe('página /unirme/[codigo]', () => {
     expect(await abrir('K7QD-3MPX')).toBe('/aceptar?next=%2Funirme%2FK7QD-3MPX');
   });
   it('con sesión y consentimientos muestra el formulario; un código mal formado, el aviso', async () => {
+    s.tieneCirculo.mockResolvedValue(false);
     expect(await abrir('K7QD-3MPX')).toBe('SIN-REDIRECT');
     expect(await abrir('../app')).toBe('SIN-REDIRECT');
+  });
+  it('un enlace con codificación rota no da error: muestra «no sirve»', async () => {
+    expect(await abrir('%E0%A4%A')).toBe('SIN-REDIRECT');
+  });
+  it('quien ya tiene un círculo recibe el aviso antes de escribir su nombre', async () => {
+    s.tieneCirculo.mockResolvedValue(true);
+    const r = (await UnirmePage({ params: Promise.resolve({ codigo: 'K7QD-3MPX' }) })) as { props: { yaTieneCirculo?: boolean } };
+    expect(r.props.yaTieneCirculo).toBe(true);
   });
 });
 

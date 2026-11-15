@@ -436,7 +436,7 @@ function InvitacionRemota() {
       ) : (
         <>
           <p className="t-body text-[var(--text-secondary)]">
-            Crea un enlace para tus hermanos. Entran sin pagar, ven lo que anotas y pueden anotar. Dura 7 días y lo puedes revocar.
+            Crea un enlace para tus hermanos. Entran sin pagar y ven el círculo. Podrán anotar mientras tu suscripción esté al día. Dura 7 días y lo puedes revocar.
           </p>
           <Btn variant="primary" size="lg" full disabled={ocupado} onClick={() => void ejecutar(() => crearInvitacion())}>
             {ocupado ? 'Creando…' : 'Crear enlace de invitación'}
