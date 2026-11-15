@@ -11,11 +11,16 @@ import { Avatar, Btn, Card, ChipToggle, PageHeader, Pill, Switch, TextInput, btn
 import { IconChip } from '@/components/landing/ui';
 import { Sheet, ConfirmSheet } from '@/components/app/Sheet';
 import { useFeedback } from '@/components/app/Feedback';
-import { actions, useAppData } from '@/lib/store';
+import { actions, MODO_REMOTO, useAppData } from '@/lib/store';
+import { crearClienteNavegador } from '@/lib/supabase/navegador';
+import { borrarBorrador } from '@/lib/datos/borrador';
+import { DIAS_DE_DOSIS } from '@/lib/datos/remoto';
 import { MARCA } from '@/lib/marca';
 import { INVITACION_CONECTADA } from '@/lib/oferta';
 import { track } from '@/lib/analytics';
 import type { AppData, RemindHours } from '@/lib/types';
+
+const urlAcceso = () => `${window.location.origin}/entrar`;
 
 export default function FamiliaScreen() {
   const data = useAppData();
@@ -35,6 +40,24 @@ export default function FamiliaScreen() {
     } catch {
       notify('No pudimos descargarlos. Inténtalo de nuevo.');
     }
+  }
+  // Cerrar sesión de verdad: se cierra en Supabase y se recarga la página entera, para que ningún dato de esta
+  // familia quede en memoria si otra persona entra después desde el mismo navegador.
+  async function cerrarSesion() {
+    if (MODO_REMOTO) {
+      // Antes de salir, que termine de guardarse lo último que se anotó (con tope de tiempo).
+      const todoGuardado = await actions.vaciarCola();
+      if (!todoGuardado) notify('Algún cambio reciente puede no haberse guardado. Revisa tu conexión y vuelve a entrar.');
+      borrarBorrador(); // el borrador del recorrido inicial no debe verlo quien entre después desde este navegador
+      try {
+        await crearClienteNavegador()?.auth.signOut();
+      } catch {
+        // Aunque falle, se vuelve al acceso: la sesión caduca sola y /app la valida en el servidor.
+      }
+      window.location.assign(urlAcceso()); // navegación completa a propósito: limpia la memoria del navegador
+      return;
+    }
+    router.push('/entrar');
   }
   const params = useSearchParams();
   const [invitar, setInvitar] = useState(params.get('invitar') === '1');
@@ -226,26 +249,36 @@ export default function FamiliaScreen() {
           <LogOut size={20} aria-hidden="true" />
           Cerrar sesión
         </Btn>
-        <Btn variant="ghost" size="md" full onClick={() => setReset(true)}>
-          <RotateCcw size={18} aria-hidden="true" />
-          {data.demo ? 'Volver a mis datos' : 'Ver datos de ejemplo'}
-        </Btn>
-        <p className="t-body px-4 text-center text-[var(--text-secondary)]">
-          Plantilla de demostración: lo que registres se guarda solo en este dispositivo.
-        </p>
+        {!MODO_REMOTO && (
+          <>
+            <Btn variant="ghost" size="md" full onClick={() => setReset(true)}>
+              <RotateCcw size={18} aria-hidden="true" />
+              {data.demo ? 'Volver a mis datos' : 'Ver datos de ejemplo'}
+            </Btn>
+            <p className="t-body px-4 text-center text-[var(--text-secondary)]">
+              Plantilla de demostración: lo que registres se guarda solo en este dispositivo.
+            </p>
+          </>
+        )}
       </section>
 
       <Card as="section" className="flex flex-col gap-2 p-4" >
         <h2 className="t-sub text-[var(--text-primary)]">Tus datos</h2>
-        <p className="t-body text-[var(--text-secondary)]">Descarga una copia o borra tus datos.</p>
+        <p className="t-body text-[var(--text-secondary)]">
+          {MODO_REMOTO
+            ? `Descarga una copia de tus datos. Incluye las dosis de los últimos ${DIAS_DE_DOSIS} días; lo anterior sigue guardado en tu cuenta.`
+            : 'Descarga una copia o borra tus datos.'}
+        </p>
         <Btn variant="secondary" size="md" full onClick={descargar}>
           <Download size={18} aria-hidden="true" />
           Descargar mis datos
         </Btn>
-        <Btn variant="ghost" size="md" full onClick={() => setBorrar(true)}>
-          <Trash2 size={18} aria-hidden="true" />
-          Borrar los datos de este dispositivo
-        </Btn>
+        {!MODO_REMOTO && (
+          <Btn variant="ghost" size="md" full onClick={() => setBorrar(true)}>
+            <Trash2 size={18} aria-hidden="true" />
+            Borrar los datos de este dispositivo
+          </Btn>
+        )}
         <nav aria-label="Información legal" className="t-label flex flex-wrap gap-x-4 text-[var(--text-secondary)]">
           {[
             ['/privacidad', 'Privacidad'],
@@ -295,10 +328,12 @@ export default function FamiliaScreen() {
         open={salir}
         onOpenChange={setSalir}
         title="¿Cerrar sesión?"
-        text="Volverás al acceso. Tus datos siguen en este dispositivo."
+        text={MODO_REMOTO ? 'Volverás al acceso. Tus datos quedan guardados en tu cuenta.' : 'Volverás al acceso. Tus datos siguen en este dispositivo.'}
         confirmLabel="Cerrar sesión"
         cancelLabel="Seguir aquí"
-        onConfirm={() => router.push('/entrar')}
+        onConfirm={() => {
+          void cerrarSesion();
+        }}
       />
     </div>
   );
@@ -545,14 +580,14 @@ function PerfilSheet({
           guardar();
         }}
       >
-        <TextInput label="Nombre" value={name} onChange={setName} error={errors.name} />
+        <TextInput label="Nombre" value={name} onChange={setName} error={errors.name} maxLength={80} />
         <TextInput label="Edad (opcional)" value={age} onChange={setAge} inputMode="numeric" error={errors.age} />
         <TextInput label="Alergias" value={allergies} onChange={setAllergies} hint="Separadas por coma. Ej: Penicilina, Ibuprofeno" />
         <TextInput label="Condiciones" value={conditions} onChange={setConditions} hint="Separadas por coma. Ej: Hipertensión, Diabetes tipo 2" />
-        <TextInput label="Médico de cabecera" value={doctorName} onChange={setDoctorName} />
-        <TextInput label="Teléfono del médico" value={doctorPhone} onChange={setDoctorPhone} type="tel" inputMode="tel" error={errors.doctorPhone} />
-        <TextInput label="Contacto de emergencia" value={emergencyName} onChange={setEmergencyName} />
-        <TextInput label="Teléfono de emergencia" value={emergencyPhone} onChange={setEmergencyPhone} type="tel" inputMode="tel" error={errors.emergencyPhone} />
+        <TextInput label="Médico de cabecera" value={doctorName} onChange={setDoctorName} maxLength={80} />
+        <TextInput label="Teléfono del médico" value={doctorPhone} onChange={setDoctorPhone} maxLength={30} type="tel" inputMode="tel" error={errors.doctorPhone} />
+        <TextInput label="Contacto de emergencia" value={emergencyName} onChange={setEmergencyName} maxLength={80} />
+        <TextInput label="Teléfono de emergencia" value={emergencyPhone} onChange={setEmergencyPhone} maxLength={30} type="tel" inputMode="tel" error={errors.emergencyPhone} />
         <Btn type="submit" size="lg" full className="mt-2">
           Guardar cambios
         </Btn>

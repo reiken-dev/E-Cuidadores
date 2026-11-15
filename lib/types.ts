@@ -113,6 +113,8 @@ export interface Plan {
   estado: PlanEstado;
   tipo: PlanTipo;
   desde: number; // ms: inicio de la suscripción
+  /** Solo con pago pendiente: 'cobro' = no se pudo cobrar (conserva el acceso); 'inactiva' = la suscripción ya no está activa (el círculo queda de solo lectura). Ausente = 'cobro'. */
+  motivo?: 'cobro' | 'inactiva';
 }
 
 export interface AppData {

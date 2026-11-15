@@ -12,11 +12,11 @@
 import { useEffect, useState } from 'react';
 import { CalendarCheck, CreditCard, HeartHandshake, ShieldCheck, Users } from 'lucide-react';
 import { Btn, Card, CountUp, LinkBtn, PageHeader, Pill } from '@/components/app/ui';
-import { PrimerosPasos } from '@/components/app/retencion';
+import { PrimerosPasos, TEXTO_SUSCRIPCION_INACTIVA } from '@/components/app/retencion';
 import { Sheet } from '@/components/app/Sheet';
 import { track } from '@/lib/analytics';
 import { MARCA } from '@/lib/marca';
-import { sincroTexto, textoConservacion, PRECIO_ANIO, PRECIO_ANIO_POR_MES, PRECIO_MES, textoMesesGratis, usd } from '@/lib/oferta';
+import { datosTexto, sincroTexto, textoConservacion, PRECIO_ANIO, PRECIO_ANIO_POR_MES, PRECIO_MES, textoMesesGratis, usd } from '@/lib/oferta';
 import { diasDeSuscripcion, esPrimerMes, ofrecerAnual, valorRecibido } from '@/lib/retencion';
 import { actions, useAppData, useNow } from '@/lib/store';
 import type { PlanEstado, PlanTipo } from '@/lib/types';
@@ -131,7 +131,11 @@ export default function PlanScreen() {
         </div>
         {plan.estado === 'pago_pendiente' && (
           <p className="t-body mt-3 rounded-2xl bg-[color-mix(in_oklab,var(--warn)_20%,transparent)] p-3 text-[var(--text-primary)]">
-            No pudimos cobrar tu último pago. Actualiza tu medio de pago en Hotmart para mantener el acceso. {sincroTexto('Lo que anotaron sigue guardado, y este cobro no borra nada.', 'Lo que anotaron se guarda en este dispositivo, y este cobro no borra nada.')}
+            {plan.motivo === 'inactiva' ? `Tu suscripción no está activa. ${TEXTO_SUSCRIPCION_INACTIVA}` : 'No pudimos cobrar tu último pago. Actualiza tu medio de pago en Hotmart para mantener el acceso. '}
+            {plan.motivo !== 'inactiva' && datosTexto(
+              'Lo que anotaron sigue guardado en tu cuenta, y este cobro no borra nada. Si el acceso se suspende, podrán seguir consultándolo y descargarlo.',
+              sincroTexto('Lo que anotaron sigue guardado, y este cobro no borra nada.', 'Lo que anotaron se guarda en este dispositivo, y este cobro no borra nada.')
+            )}
           </p>
         )}
         <EnlaceCuenta

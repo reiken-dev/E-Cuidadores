@@ -202,6 +202,7 @@ export function TextInput({
   autoFocus,
   min,
   max,
+  maxLength,
 }: {
   label: string;
   value: string;
@@ -214,6 +215,8 @@ export function TextInput({
   autoFocus?: boolean;
   min?: string;
   max?: string;
+  /** Tope de caracteres. Debe ser igual o menor que el que impone la base (supabase/schema.sql), si no, guardar falla. */
+  maxLength?: number;
 }) {
   return (
     <Field label={label} error={error} hint={hint}>
@@ -228,6 +231,7 @@ export function TextInput({
           autoFocus={autoFocus}
           min={min}
           max={max}
+          maxLength={maxLength}
           className={`${inputClass(error)} h-14`}
         />
       )}

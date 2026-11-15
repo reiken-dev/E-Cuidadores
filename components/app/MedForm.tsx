@@ -92,8 +92,8 @@ export function MedForm({
           guardar();
         }}
       >
-        <TextInput label="Nombre" value={name} onChange={setName} error={errors.name} placeholder="Ej: Losartán" autoFocus={!editing} />
-        <TextInput label="Dosis" value={dose} onChange={setDose} error={errors.dose} placeholder="Ej: 50 mg" />
+        <TextInput label="Nombre" value={name} onChange={setName} error={errors.name} placeholder="Ej: Losartán" autoFocus={!editing} maxLength={80} />
+        <TextInput label="Dosis" value={dose} onChange={setDose} error={errors.dose} placeholder="Ej: 50 mg" maxLength={80} />
 
         <fieldset className="flex flex-col gap-2">
           <legend className="t-body mb-2 font-medium text-[var(--text-primary)]">Horarios</legend>
@@ -178,7 +178,7 @@ export function MedForm({
           />
         )}
 
-        <TextInput label="Notas (opcional)" value={notes} onChange={setNotes} placeholder="Ej: lo que indicó el médico" />
+        <TextInput label="Notas (opcional)" value={notes} onChange={setNotes} placeholder="Ej: lo que indicó el médico" maxLength={300} />
 
         <MemberPicker
           label="Quién suele dársela"

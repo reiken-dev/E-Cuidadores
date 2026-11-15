@@ -22,6 +22,18 @@ export async function sesionDelServidor(): Promise<SesionServidor | null> {
   return { userId: data.user.id };
 }
 
+/**
+ * ¿La persona ya tiene un círculo? RLS solo deja ver los propios. true / false, o null si no se pudo saber
+ * (error de lectura): quien llama decide, sin tratar un fallo como «no tiene círculo».
+ */
+export async function tieneCirculo(): Promise<boolean | null> {
+  const db = await crearClienteServidor();
+  if (!db) return null;
+  const { data, error } = await db.from('circles').select('id').limit(1);
+  if (error || !data) return null;
+  return data.length > 0;
+}
+
 /** ¿La sesión tiene los dos consentimientos obligatorios guardados? Falla cerrado: sin cliente o con error, false. */
 export async function consentimientosAlDia(): Promise<boolean> {
   const db = await crearClienteServidor();

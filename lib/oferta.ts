@@ -7,6 +7,8 @@
 //    (derecho de arrepentimiento que Hotmart aplica). Lo habitual es 7; Hotmart admite 7, 15, 21 o 30 y debe
 //    coincidir con lo que configures en el producto. Los medios de pago los define tu plataforma.
 
+import { MARCA } from './marca';
+
 // Prueba sugerida de 7 días. Antes de vender, confírmala en Hotmart con estos días, cambia el número o quita la prueba (0) hasta que la tengas configurada.
 // [VERIFICAR: confirma los días de prueba en tu plataforma de cobro]
 export const TRIAL_DIAS = 7;
@@ -59,6 +61,14 @@ export const DATOS_CONSERVACION_CONFIRMADA = false;
 export const textoConservacion = DATOS_CONSERVACION_CONFIRMADA
   ? `tus datos se conservan ${DIAS_CONSERVAR_DATOS} días`
   : 'podrás pedir una copia de tus datos escribiendo a soporte';
+
+/**
+ * ¿Los datos viven en la cuenta (Supabase conectado) o solo en este dispositivo (demostración)? Los textos que hablan
+ * de DÓNDE se guarda lo que escribes usan esto, para no decir «no se envía a ningún servidor» cuando sí se envía.
+ * (Es independiente de la sincronización entre hermanos, que sigue su propia constante.)
+ */
+export const DATOS_EN_LA_CUENTA = MARCA.conexiones.supabase;
+export const datosTexto = (enLaCuenta: string, local: string) => (DATOS_EN_LA_CUENTA ? enLaCuenta : local);
 
 /**
  * ¿Ya conectaste tu base de datos para que lo que anota un hermano lo vean los demás en SUS teléfonos?

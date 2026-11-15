@@ -39,3 +39,26 @@ describe('consentimientosAlDia', () => {
     expect(await consentimientosAlDia()).toBe(false);
   });
 });
+
+describe('tieneCirculo', () => {
+  beforeEach(() => crearClienteServidor.mockReset());
+  const conConsulta = (resp: { data: unknown[] | null; error: unknown }) => ({ from: () => ({ select: () => ({ limit: async () => resp }) }) });
+
+  it('sin cliente (faltan variables) no se sabe: null', async () => {
+    crearClienteServidor.mockResolvedValue(null);
+    const { tieneCirculo } = await import('./sesion');
+    expect(await tieneCirculo()).toBeNull();
+  });
+  it('con una fila, true; sin filas, false', async () => {
+    const { tieneCirculo } = await import('./sesion');
+    crearClienteServidor.mockResolvedValue(conConsulta({ data: [{ id: 'c1' }], error: null }));
+    expect(await tieneCirculo()).toBe(true);
+    crearClienteServidor.mockResolvedValue(conConsulta({ data: [], error: null }));
+    expect(await tieneCirculo()).toBe(false);
+  });
+  it('un error de lectura NO se confunde con «no tiene círculo»: null', async () => {
+    const { tieneCirculo } = await import('./sesion');
+    crearClienteServidor.mockResolvedValue(conConsulta({ data: null, error: { code: 'XX000' } }));
+    expect(await tieneCirculo()).toBeNull();
+  });
+});

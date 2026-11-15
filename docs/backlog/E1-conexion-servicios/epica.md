@@ -15,7 +15,9 @@ Sale de la sección «No hecho» de `CLAUDE.md` y de `LISTA-DE-CONEXION.md`. Las
 | [us-sesion-real.md](./us-sesion-real.md) | Entrar con una cuenta real | — |
 | [us-webhook-hotmart.md](./us-webhook-hotmart.md) | La app se entera de compras y cancelaciones | sesión real |
 | [us-correos.md](./us-correos.md) | Recibir correos reales (opcional) | sesión real |
-| [us-sincronia-hermanos.md](./us-sincronia-hermanos.md) | Ver los mismos datos que mis hermanos | sesión real |
+| [us-sincronia-hermanos.md](./us-sincronia-hermanos.md) | Datos reales en Supabase para el organizador (ECU-5) | sesión real, webhook Hotmart |
+| [us-invitar-hermano.md](./us-invitar-hermano.md) | Invitar a un hermano con un enlace (ECU-9) | ECU-5 |
+| [us-ver-cambios-hermanos.md](./us-ver-cambios-hermanos.md) | Ver los cambios de mis hermanos (ECU-10) | ECU-5, ECU-9 |
 | [us-cron-retencion.md](./us-cron-retencion.md) | Retención activa sin culpa | webhook Hotmart |
 | [us-vigencia-por-fecha.md](./us-vigencia-por-fecha.md) | Vigencia por fecha de fin y búsqueda por correo | webhook Hotmart |
 

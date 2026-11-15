@@ -32,6 +32,10 @@ let storage: FakeStorage;
 
 async function abrir(): Promise<Store> {
   vi.resetModules();
+  // Estas pruebas describen el modo LOCAL (demostración). No dependen de lo que valga conexiones.supabase en
+  // lib/marca.ts: así siguen pasando cuando conectes Supabase. El modo remoto se prueba en lib/store-remoto.test.ts.
+  const real = await vi.importActual<typeof import('./marca')>('./marca');
+  vi.doMock('./marca', () => ({ ...real, MARCA: { ...real.MARCA, conexiones: { ...real.MARCA.conexiones, supabase: false } } }));
   return (await import('./store')) as Store;
 }
 
@@ -49,6 +53,19 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
+  vi.doUnmock('./marca');
+});
+
+describe('ids nuevos', () => {
+  it('siempre son un uuid válido, también donde no existe crypto.randomUUID (contexto no seguro): la base lo exige', async () => {
+    const { newId } = await abrir();
+    const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+    expect(newId()).toMatch(UUID);
+    vi.stubGlobal('crypto', undefined);
+    const ids = new Set(Array.from({ length: 200 }, () => newId()));
+    expect(ids.size).toBe(200);
+    for (const id of ids) expect(id).toMatch(UUID);
+  });
 });
 
 describe('arranque del store', () => {

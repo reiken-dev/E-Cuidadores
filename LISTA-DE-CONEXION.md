@@ -34,7 +34,10 @@ El detalle de cada paso (con las instrucciones listas para pegarle a tu IA) est�
   - Confirma si quieres "Confirm email" activo; el flujo funciona con o sin él.
   - Rate limits: el límite de intentos del formulario es solo visual. La protección real es la de Supabase Auth (Authentication → Rate Limits): revísala. El proveedor de correo integrado de Supabase tiene un tope muy bajo: para producción configura un SMTP propio.
   - Quien tenga sesión pero no los dos consentimientos guardados pasa por `/aceptar` antes de entrar a `/app`.
-- [ ] Datos: reemplaza `lib/store.ts` por llamadas a Supabase (es la única frontera con los datos). El contrato que debe cumplir está en `docs/conexion/ADAPTADOR-DATOS.md`.
+- [ ] Datos: ejecuta `supabase/datos-reales.sql` (después de `schema.sql`, `retencion.sql` y `permisos-service-role.sql`). Con `supabase: true` en `lib/marca.ts`, `lib/store.ts` guarda en Supabase (adaptador en `lib/datos/`; el contrato está en `docs/conexion/ADAPTADOR-DATOS.md`). El círculo se crea en `/bienvenida` y exige una suscripción vigente: con Hotmart real, la compra; para probar, el simulador (`scripts/simular-hotmart.mjs`).
+- [ ] Hermanos: invitarlos (ECU-9) y que vean los cambios de los demás (ECU-10) siguen pendientes; hasta entonces no actives `SINCRONIZACION_CONECTADA` ni `INVITACION_CONECTADA`.
+- [ ] Textos legales: con `supabase: true` los borradores de `lib/legal-textos.ts` cambian solos y hablan de servidor y de proveedores. Completa `LEGAL` y revísalos con tu abogado antes de publicar. Mientras ECU-9 no exista, repasa las frases que dicen que el círculo lo forman «las personas que tú invitas». Los textos de la app sobre dónde se guardan los datos ya cambian con ese flag (`datosTexto` en `lib/oferta.ts`).
+- [ ] Pruebas con el flag activo: `npm test` pasa con `supabase` en `true` o en `false`. Los e2e (`npm run test:e2e`) recorren la demostración, así que corren con `supabase: false`.
 - [ ] Prueba con DOS cuentas distintas: una no debe ver los datos de la otra (RLS). `npm test` ya prueba esto en un PostgreSQL en memoria (`supabase/sql.test.ts`); tu proyecto real hay que probarlo aparte.
 
 ## 3. Hotmart (cobros)

@@ -4,7 +4,7 @@ import type { ReactNode } from 'react';
 import './tokens-app.css';
 import { AppShell } from '@/components/app/AppShell';
 import { MARCA } from '@/lib/marca';
-import { appEnDemostracion, consentimientosAlDia, sesionDelServidor } from '@/lib/sesion';
+import { appEnDemostracion, consentimientosAlDia, sesionDelServidor, tieneCirculo } from '@/lib/sesion';
 
 export const metadata: Metadata = {
   title: { default: `${MARCA.nombre}: el panel del cuidado`, template: `%s · ${MARCA.nombre}` },
@@ -19,6 +19,8 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   if (!demo) {
     if (!(await sesionDelServidor())) redirect('/entrar');
     if (!(await consentimientosAlDia())) redirect('/aceptar');
+    // Y con un círculo creado: si aún no tiene, a /bienvenida (si no se pudo comprobar, se abre y la app muestra el error).
+    if ((await tieneCirculo()) === false) redirect('/bienvenida');
   }
   return (
     <>

@@ -31,9 +31,10 @@ import { track } from '@/lib/analytics';
 import { Circulo } from '@/components/brand/Circulo';
 import { PaywallScreen } from '@/components/onboarding/PaywallScreen';
 import { wizard, useHydrated, useWizard, type PreocupacionId } from '@/components/onboarding/wizardStore';
-import { actions } from '@/lib/store';
+import { actions, MODO_REMOTO } from '@/lib/store';
+import { guardarBorrador } from '@/lib/datos/borrador';
 import { fmtTime, parseTimeInput } from '@/lib/dates';
-import { GARANTIA_DIAS, TRIAL_DIAS, sincroTexto, tieneTrial } from '@/lib/oferta';
+import { GARANTIA_DIAS, TRIAL_DIAS, datosTexto, sincroTexto, tieneTrial } from '@/lib/oferta';
 
 // Progreso por pantalla (arranca en piso 8%, endowed progress, nunca retrocede al avanzar).
 // Índices: 0 Q1 · 1 nombres · 2 hermanos · 3 preocupación · 4 reconocimiento · 5 medicina · 6 muestra · 7 dudas · 8 paywall.
@@ -188,6 +189,15 @@ function Recorrido() {
         onEmpezarTrial={(planElegido) => {
           track('prueba_iniciada', { plan: planElegido });
           const med = medicamento.trim();
+          const hora = parseTimeInput(horario) ?? parseTimeInput(HORARIO_POR_DEFECTO) ?? '08:00';
+          if (MODO_REMOTO) {
+            // Con cuenta real el círculo se crea después, con sesión y compra activa (/bienvenida). Se guardan las
+            // respuestas en este navegador, solo hasta entonces.
+            guardarBorrador({ nombreFamiliar: nombre.trim(), parentesco: PARENTESCO[quien] ?? 'Familiar mayor', tuNombre: organizerName.trim(), medicina: med, hora });
+            wizard.discard();
+            router.push('/entrar?modo=crear');
+            return;
+          }
           actions.applyOnboarding({
             name: nombre.trim() || undefined,
             organizerName: organizerName.trim() || undefined,
@@ -438,7 +448,10 @@ const DUDAS: { pregunta: string; respuesta: string }[] = [
     pregunta: '¿Es seguro?',
     respuesta: sincroTexto(
       'Solo lo ven las personas de tu círculo a las que invites. Puedes borrarlo cuando quieras desde Familia, en Tus datos.',
-      'Lo que escribes se guarda en este dispositivo y no se envía a ningún servidor. Puedes borrarlo cuando quieras desde Familia, en Tus datos.'
+      datosTexto(
+        'Lo que escribes se guarda en tu cuenta y solo lo ve tu círculo familiar. Puedes descargar una copia desde Familia, en Tus datos.',
+        'Lo que escribes se guarda en este dispositivo y no se envía a ningún servidor. Puedes borrarlo cuando quieras desde Familia, en Tus datos.'
+      )
     ),
   },
   {
