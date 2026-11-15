@@ -17,6 +17,7 @@ Sale de la sección «No hecho» de `CLAUDE.md` y de `LISTA-DE-CONEXION.md`. Las
 | [us-correos.md](./us-correos.md) | Recibir correos reales (opcional) | sesión real |
 | [us-sincronia-hermanos.md](./us-sincronia-hermanos.md) | Ver los mismos datos que mis hermanos | sesión real |
 | [us-cron-retencion.md](./us-cron-retencion.md) | Retención activa sin culpa | webhook Hotmart |
+| [us-vigencia-por-fecha.md](./us-vigencia-por-fecha.md) | Vigencia por fecha de fin y búsqueda por correo | webhook Hotmart |
 
 ## Restricciones
 - Antes de cada paso que cree cuentas, cobre, envíe correos o despliegue, el alumno confirma de forma explícita.
