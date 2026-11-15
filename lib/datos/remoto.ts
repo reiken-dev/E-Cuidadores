@@ -13,19 +13,30 @@ export interface Contexto {
   userId: string;
 }
 
-/** `permiso`: la base lo rechazó (p. ej. la suscripción venció y el círculo quedó de solo lectura). `otro`: red u otro fallo. */
-export type Resultado = { ok: true } | { ok: false; codigo: 'permiso' | 'otro' };
+/**
+ * Por qué no se pudo guardar:
+ * - `permiso`: la base lo rechazó con 42501 (p. ej. la suscripción venció y el círculo quedó de solo lectura).
+ * - `invalido`: un dato no cumple las reglas de la base (texto demasiado largo, formato incorrecto).
+ * - `sin-efecto`: la base respondió sin error pero no cambió ninguna fila (RLS la ocultó o ya no existía).
+ * - `otro`: red u otro fallo.
+ */
+export type CodigoError = 'permiso' | 'invalido' | 'sin-efecto' | 'otro';
+export type Resultado = { ok: true } | { ok: false; codigo: CodigoError };
 
 /** Cuántos días de dosis se cargan. Más atrás queda en la base, pero no se trae (la racha y el resumen no lo necesitan). */
 export const DIAS_DE_DOSIS = 120;
 const PAGINA = 1000; // tope por consulta de PostgREST en Supabase
 
 type ErrorBase = { code?: string } | null;
-const comoResultado = (error: ErrorBase): Resultado => (error ? { ok: false, codigo: error.code === '42501' ? 'permiso' : 'otro' } : { ok: true });
+// 23514 = regla CHECK, 22001 = texto demasiado largo, 22P02 = formato inválido, 23502 = falta un dato obligatorio.
+const INVALIDOS = new Set(['23514', '22001', '22P02', '23502']);
+export const codigoDeError = (error: NonNullable<ErrorBase>): CodigoError =>
+  error.code === '42501' ? 'permiso' : error.code && INVALIDOS.has(error.code) ? 'invalido' : 'otro';
+const comoResultado = (error: ErrorBase): Resultado => (error ? { ok: false, codigo: codigoDeError(error) } : { ok: true });
 
-/** Una actualización que no cambia ninguna fila (RLS la oculta) es un rechazo, aunque la base no devuelva error. */
+/** Una actualización o un borrado que no cambia ninguna fila (RLS la oculta) NO es un éxito, aunque la base no devuelva error. */
 const comoResultadoDeCambio = (r: { data: unknown[] | null; error: ErrorBase }): Resultado =>
-  r.error ? comoResultado(r.error) : !r.data || r.data.length === 0 ? { ok: false, codigo: 'permiso' } : { ok: true };
+  r.error ? comoResultado(r.error) : !r.data || r.data.length === 0 ? { ok: false, codigo: 'sin-efecto' } : { ok: true };
 
 /** Lee todas las filas de una consulta, de a PAGINA, porque la API devuelve como mucho 1000 por llamada. */
 async function leerTodo<T>(pagina: (desde: number, hasta: number) => PromiseLike<{ data: T[] | null; error: ErrorBase }>): Promise<T[]> {
@@ -65,7 +76,7 @@ export async function cargarCirculo(db: SupabaseClient, userId: string, opciones
     ),
     leerTodo<FilaCita>((a, b) => db.from('appointments').select('*').eq('circle_id', id).order('appt_date').order('id').range(a, b)),
     leerTodo<FilaNota>((a, b) => db.from('notes').select('id,kind,body,author_id,created_at').eq('circle_id', id).order('created_at').order('id').range(a, b)),
-    db.from('subscriptions').select('status,plan,updated_at').eq('user_id', userId).maybeSingle(),
+    db.from('subscriptions').select('status,plan,updated_at,current_period_end').eq('user_id', userId).maybeSingle(),
   ]);
   if (suscripcion.error) throw new Error('suscripcion');
 
@@ -93,8 +104,7 @@ export const escribir = {
     return comoResultado(error);
   },
   async borrarMed(c: Contexto, id: string): Promise<Resultado> {
-    const { error } = await c.db.from('meds').delete().eq('id', id).eq('circle_id', c.circleId);
-    return comoResultado(error);
+    return comoResultadoDeCambio(await c.db.from('meds').delete().eq('id', id).eq('circle_id', c.circleId).select('id'));
   },
   async guardarCita(c: Contexto, cita: Appt): Promise<Resultado> {
     const { error } = await c.db.from('appointments').upsert(citaAFila(cita, c.circleId), { onConflict: 'id' });
@@ -105,8 +115,7 @@ export const escribir = {
     return comoResultado(error);
   },
   async borrarNota(c: Contexto, id: string): Promise<Resultado> {
-    const { error } = await c.db.from('notes').delete().eq('id', id).eq('circle_id', c.circleId);
-    return comoResultado(error);
+    return comoResultadoDeCambio(await c.db.from('notes').delete().eq('id', id).eq('circle_id', c.circleId).select('id'));
   },
   /** Una sola transacción en la base: reemplaza la dosis anterior y la firma con la sesión (nadie firma a nombre de otro). */
   async registrarDosis(c: Contexto, d: { medId: string; date: string; time: string; skipped: SkipReason | null; bySelf: boolean }): Promise<Resultado> {
@@ -114,8 +123,9 @@ export const escribir = {
     return comoResultado(error);
   },
   async deshacerDosis(c: Contexto, d: { medId: string; date: string; time: string }): Promise<Resultado> {
-    const { error } = await c.db.from('dose_logs').delete().eq('circle_id', c.circleId).eq('med_id', d.medId).eq('dose_date', d.date).eq('dose_time', d.time);
-    return comoResultado(error);
+    return comoResultadoDeCambio(
+      await c.db.from('dose_logs').delete().eq('circle_id', c.circleId).eq('med_id', d.medId).eq('dose_date', d.date).eq('dose_time', d.time).select('med_id')
+    );
   },
   async actualizarPerfil(c: Contexto, perfil: Profile): Promise<Resultado> {
     return comoResultadoDeCambio(await c.db.from('circles').update(perfilAColumnas(perfil)).eq('id', c.circleId).select('id'));

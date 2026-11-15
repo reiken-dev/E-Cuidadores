@@ -73,6 +73,7 @@ export interface FilaSuscripcion {
   status: string;
   plan: string;
   updated_at: string;
+  current_period_end?: string | null;
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -186,10 +187,18 @@ export function notaDeFila(r: FilaNota): Note {
  * RLS solo deja leer la fila PROPIA: quien no tiene una (un hermano invitado, que no paga) no ve un aviso de cobro que
  * no es suyo. El estado real del círculo lo impone la base al escribir (circle_active).
  */
-export function planDeSuscripcion(s: FilaSuscripcion | null): Plan {
+export function planDeSuscripcion(s: FilaSuscripcion | null, ahora: number = Date.now()): Plan {
   if (!s) return { estado: 'activo', tipo: 'mensual', desde: 0 };
-  const alDia = s.status === 'trial' || s.status === 'active' || s.status === 'canceled';
-  return { estado: alDia ? 'activo' : 'pago_pendiente', tipo: s.plan === 'anual' ? 'anual' : 'mensual', desde: isoAMs(s.updated_at) ?? 0 };
+  const base = { tipo: s.plan === 'anual' ? ('anual' as const) : ('mensual' as const), desde: isoAMs(s.updated_at) ?? 0 };
+  if (s.status === 'trial' || s.status === 'active') return { ...base, estado: 'activo' };
+  // Mismo criterio que la base (suscripcion_vigente): una cancelada conserva el acceso solo hasta el fin de lo ya pagado.
+  if (s.status === 'canceled') {
+    const fin = isoAMs(s.current_period_end ?? null);
+    return fin !== null && fin > ahora ? { ...base, estado: 'activo' } : { ...base, estado: 'pago_pendiente', motivo: 'inactiva' };
+  }
+  // No se pudo cobrar: la base conserva el acceso (en gracia). Vencida, reembolsada o con contracargo: ya no hay acceso.
+  if (s.status === 'past_due') return { ...base, estado: 'pago_pendiente', motivo: 'cobro' };
+  return { ...base, estado: 'pago_pendiente', motivo: 'inactiva' };
 }
 
 // ── escritura: tipo → fila ──────────────────────────────────────────────────────────────────────────────────────
@@ -281,6 +290,6 @@ export function armarDatos(f: FilasDelCirculo): AppData {
     settings: ajustesDeFila(f.circulo, f.simpleMode),
     lastSeenAt: isoAMs(yo?.last_seen_at) ?? 0,
     hitos: f.circulo.celebrated_milestones ?? [],
-    plan: planDeSuscripcion(f.suscripcion),
+    plan: planDeSuscripcion(f.suscripcion, f.ahora),
   };
 }

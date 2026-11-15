@@ -40,7 +40,8 @@ import { codigoCirculoAleatorio } from './codigo-circulo';
 import { MARCA } from './marca';
 import { crearClienteNavegador } from './supabase/navegador';
 import { cargarCirculo, escribir } from './datos/remoto';
-import type { Contexto, Resultado } from './datos/remoto';
+import type { CodigoError, Contexto, Resultado } from './datos/remoto';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 export const STORAGE_KEY = 'entre-hermanos:v1';
 const PERSONAL_BACKUP_KEY = 'entre-hermanos:personal-backup:v1';
@@ -64,15 +65,22 @@ let contexto: Contexto | null = null;
 let hidratando = false;
 let primeraCarga = true;
 let cola: Promise<void> = Promise.resolve();
+let pendientes = 0; // escrituras en cola o en vuelo
+let necesitaRecarga = false;
+let ultimoCodigo: CodigoError = 'otro';
+let vigilando = false;
+let avisoAntesDeSalir = false;
 
 /** Mientras no llegan los datos reales (y en el servidor) se muestra un espacio vacío: nunca datos de ejemplo. */
 function marcador(): AppData {
   return buildEmptyData(Date.now(), {});
 }
 
+/** Id nuevo. Siempre un uuid v4 válido, porque la base lo exige: randomUUID solo existe en contextos seguros (https o localhost). */
 function uid(): string {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID();
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  const hex = (n: number) => Math.floor(Math.random() * n).toString(16);
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => (c === 'x' ? hex(16) : (8 + Math.floor(Math.random() * 4)).toString(16)));
 }
 
 function load(): AppData {
@@ -156,33 +164,66 @@ function leerSimple(): boolean {
   }
 }
 
-/** Lee el círculo del servidor. `silenciosa`: no vuelve al estado «cargando» (recarga tras un fallo al guardar). */
-async function hidratar(silenciosa = false): Promise<void> {
-  if (!MODO_REMOTO || typeof window === 'undefined') return;
+const urlEntrar = () => `${window.location.origin}/entrar`;
+/** Navegación COMPLETA al acceso: así ningún dato de la familia anterior queda en la memoria de la página. */
+function irAEntrar() {
+  try {
+    window.location.assign(urlEntrar());
+  } catch {
+    // Sin location (pruebas o un entorno raro): no hay a dónde navegar.
+  }
+}
+
+/** Si la sesión se cierra, caduca o cambia de persona (otra pestaña), se vuelve al acceso. */
+function vigilarSesion(db: SupabaseClient, userId: string) {
+  if (vigilando) return;
+  vigilando = true;
+  db.auth.onAuthStateChange((evento, sesion) => {
+    if (evento === 'SIGNED_OUT' || (sesion?.user && sesion.user.id !== userId)) irAEntrar();
+  });
+}
+
+/**
+ * Lee el círculo del servidor. `silenciosa`: no vuelve al estado «cargando» (recarga tras un fallo al guardar).
+ * Devuelve 'descartada' si, mientras se leía, llegaron escrituras nuevas: aplicar esa lectura pisaría cambios aún sin enviar.
+ */
+async function hidratar(silenciosa = false): Promise<'ok' | 'error' | 'descartada'> {
+  if (!MODO_REMOTO || typeof window === 'undefined') return 'error';
   if (!silenciosa) {
     estadoDatos = 'cargando';
     emit();
   }
+  let resultado: 'ok' | 'error' | 'descartada' = 'error';
   try {
     const db = crearClienteNavegador();
     if (!db) throw new Error('sin-cliente');
     const { data, error } = await db.auth.getUser();
-    if (error || !data.user) throw new Error('sin-sesion');
+    if (error || !data.user) {
+      irAEntrar(); // sesión caducada o cerrada: no tiene sentido «reintentar»
+      throw new Error('sin-sesion');
+    }
+    vigilarSesion(db, data.user.id);
     const r = await cargarCirculo(db, data.user.id, { simpleMode: leerSimple() });
     if (!r) throw new Error('sin-circulo');
     contexto = { db, circleId: r.circleId, userId: data.user.id };
-    cache = r.datos;
-    // «Mientras no estabas» usa la última visita ANTERIOR a esta sesión: se fija con el primer dato real.
-    if (primeraCarga) {
-      seenBefore = null;
-      primeraCarga = false;
+    if (silenciosa && pendientes > 0) {
+      resultado = 'descartada';
+    } else {
+      cache = r.datos;
+      // «Mientras no estabas» usa la última visita ANTERIOR a esta sesión: se fija con el primer dato real.
+      if (primeraCarga) {
+        seenBefore = null;
+        primeraCarga = false;
+      }
+      estadoDatos = 'listo';
+      resultado = 'ok';
     }
-    estadoDatos = 'listo';
   } catch {
     // Sin log: el error podría traer datos de la familia. Si ya había datos en pantalla, se conservan.
     if (!silenciosa) estadoDatos = 'error';
   }
   emit();
+  return resultado;
 }
 
 function iniciarHidratacion() {
@@ -191,11 +232,23 @@ function iniciarHidratacion() {
   void hidratar();
 }
 
-/** Cola serial de escrituras en segundo plano (modo remoto). Una escritura rechazada avisa y recarga del servidor. */
-function enviar(op: (c: Contexto) => Promise<Resultado>) {
+const MENSAJES: Record<CodigoError, string> = {
+  permiso: 'No se pudo guardar el último cambio. Puede que la suscripción haya vencido y el círculo esté en solo lectura.',
+  invalido: 'No se pudo guardar el último cambio: algún dato no es válido, por ejemplo un texto demasiado largo.',
+  'sin-efecto': 'No se pudo completar el último cambio: puede que ya no exista o que el círculo esté en solo lectura.',
+  otro: 'No se pudo guardar el último cambio. Revisa tu conexión.',
+};
+
+/**
+ * Cola serial de escrituras en segundo plano (modo remoto). Si una falla, cuando la cola se vacía se vuelve a leer del
+ * servidor (nunca antes: leer a mitad pisaría cambios que aún no salieron) y se avisa con lo que de verdad pasó.
+ * `silencioso`: un fallo no avisa ni recarga (para anotaciones menores, como un hito ya celebrado).
+ */
+function enviar(op: (c: Contexto) => Promise<Resultado>, opciones: { silencioso?: boolean } = {}) {
   if (!MODO_REMOTO) return;
+  pendientes++;
   cola = cola.then(async () => {
-    let codigo: 'permiso' | 'otro' | null = null;
+    let codigo: CodigoError | null = null;
     try {
       if (!contexto) codigo = 'otro';
       else {
@@ -205,20 +258,55 @@ function enviar(op: (c: Contexto) => Promise<Resultado>) {
     } catch {
       codigo = 'otro';
     }
-    if (codigo) {
-      aviso =
-        codigo === 'permiso'
-          ? 'No se pudo guardar el último cambio. Puede que la suscripción haya vencido y el círculo esté en solo lectura. Se recargaron tus datos.'
-          : 'No se pudo guardar el último cambio. Revisa tu conexión. Se recargaron tus datos.';
+    pendientes--;
+    if (codigo && !opciones.silencioso) {
+      ultimoCodigo = codigo;
+      necesitaRecarga = true;
+    }
+    if (pendientes === 0 && necesitaRecarga) {
+      necesitaRecarga = false;
+      const recarga = await hidratar(true);
+      if (recarga === 'descartada' || pendientes > 0) {
+        necesitaRecarga = true; // llegaron cambios nuevos mientras se leía: se recarga al terminarlos
+        return;
+      }
+      aviso = `${MENSAJES[ultimoCodigo]} ${recarga === 'ok' ? 'Se recargaron tus datos.' : 'No pudimos recargar tus datos: lo que ves puede no estar guardado.'}`;
       emit();
-      await hidratar(true);
     }
   });
 }
 
+/** Espera a que salgan las escrituras pendientes (con tope de tiempo). true = no queda nada sin enviar. */
+async function vaciarCola(tiempoMs = 5000): Promise<boolean> {
+  if (!MODO_REMOTO) return true;
+  let vencio = false;
+  await Promise.race([
+    cola,
+    new Promise<void>((r) =>
+      setTimeout(() => {
+        vencio = true;
+        r();
+      }, tiempoMs)
+    ),
+  ]);
+  return !vencio && pendientes === 0;
+}
+
 function subscribe(cb: () => void): () => void {
   listeners.add(cb);
-  if (MODO_REMOTO) iniciarHidratacion();
+  if (MODO_REMOTO) {
+    iniciarHidratacion();
+    if (!avisoAntesDeSalir && typeof window !== 'undefined') {
+      avisoAntesDeSalir = true;
+      // Cerrar o recargar la pestaña con cambios sin enviar los perdería: el navegador pregunta antes.
+      window.addEventListener('beforeunload', (e) => {
+        if (pendientes > 0) {
+          e.preventDefault();
+          e.returnValue = '';
+        }
+      });
+    }
+  }
   if (!MODO_REMOTO && !storageBound && typeof window !== 'undefined') {
     storageBound = true;
     window.addEventListener('storage', (e) => {
@@ -474,7 +562,8 @@ export const actions = {
   markHito(id: string) {
     if (getSnapshot().hitos.includes(id)) return;
     update((d) => ({ ...d, hitos: [...d.hitos, id] }));
-    enviar((c) => escribir.actualizarHitos(c, getSnapshot().hitos));
+    // Si falla (p. ej. el círculo está de solo lectura) no se avisa ni se recarga: solo se vuelve a intentar en otra visita.
+    enviar((c) => escribir.actualizarHitos(c, getSnapshot().hitos), { silencioso: true });
   },
   /** Estado de la suscripción. Al conectar Hotmart lo actualiza el webhook; aquí solo sirve para ver los estados. */
   setPlan(patch: Partial<Plan>) {
@@ -540,6 +629,10 @@ export const actions = {
   /** Vuelve a leer los datos del servidor tras un error de carga (modo remoto). */
   reintentarCarga() {
     void hidratar();
+  },
+  /** Espera a que salgan las escrituras pendientes, con tope de tiempo. Úsalo antes de cerrar sesión. */
+  vaciarCola(): Promise<boolean> {
+    return vaciarCola();
   },
   /** Cierra el aviso de «no se pudo guardar». */
   descartarAviso() {

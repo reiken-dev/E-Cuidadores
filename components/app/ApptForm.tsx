@@ -85,11 +85,11 @@ export function ApptForm({
             guardar();
           }}
         >
-          <TextInput label="De qué es la cita" value={title} onChange={setTitle} error={errors.title} placeholder="Ej: Control de cardiología" autoFocus={!editing} />
-          <TextInput label="Médico o especialista" value={specialist} onChange={setSpecialist} placeholder="Ej: Dr. Ibarra" />
+          <TextInput label="De qué es la cita" value={title} onChange={setTitle} error={errors.title} maxLength={120} placeholder="Ej: Control de cardiología" autoFocus={!editing} />
+          <TextInput label="Médico o especialista" value={specialist} onChange={setSpecialist} maxLength={80} placeholder="Ej: Dr. Ibarra" />
           <TextInput label="Fecha" type="date" value={date} onChange={setDate} error={errors.date} min={editing ? undefined : hoyK} />
           <TimePicker label="Hora" value={time} onChange={setTime} error={errors.time} />
-          <TextInput label="Lugar" value={place} onChange={setPlace} placeholder="Ej: Clínica del Valle, consultorio 304" />
+          <TextInput label="Lugar" value={place} onChange={setPlace} maxLength={160} placeholder="Ej: Clínica del Valle, consultorio 304" />
           <MemberPicker label="Quién asiste" members={data.members} value={attendeeId} onChange={setAttendeeId} noneLabel="Aún sin definir" />
 
           <fieldset className="rounded-2xl bg-[var(--surface-2)] px-4 py-2">

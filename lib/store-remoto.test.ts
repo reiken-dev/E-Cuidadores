@@ -28,6 +28,9 @@ const ok = { ok: true } as const;
 let storage: FakeStorage;
 let cargar: ReturnType<typeof vi.fn>;
 let escribir: Record<string, ReturnType<typeof vi.fn>>;
+let getUser: ReturnType<typeof vi.fn<() => Promise<unknown>>>;
+let asignar: ReturnType<typeof vi.fn<(url: string) => void>>;
+let cambiosDeSesion: Array<(evento: string, sesion: { user: { id: string } } | null) => void>;
 
 const delServidor = (over: Partial<AppData> = {}): AppData =>
   data({ demo: false, currentUserId: U1, organizerName: 'Ana', members: [{ id: U1, name: 'Ana', role: 'Organizador', tone: 'accent' }], meds: [med({ id: MED, name: 'Losartán', giverId: null })], doses: [], appts: [], notes: [], hitos: [], ...over });
@@ -36,7 +39,17 @@ async function abrir(): Promise<Store> {
   vi.resetModules();
   const real = await vi.importActual<typeof import('./marca')>('./marca');
   vi.doMock('./marca', () => ({ ...real, MARCA: { ...real.MARCA, conexiones: { ...real.MARCA.conexiones, supabase: true } } }));
-  vi.doMock('./supabase/navegador', () => ({ crearClienteNavegador: () => ({ auth: { getUser: async () => ({ data: { user: { id: U1 } }, error: null }) } }) }));
+  vi.doMock('./supabase/navegador', () => ({
+    crearClienteNavegador: () => ({
+      auth: {
+        getUser: () => getUser(),
+        onAuthStateChange: (cb: (typeof cambiosDeSesion)[number]) => {
+          cambiosDeSesion.push(cb);
+          return { data: { subscription: { unsubscribe: () => {} } } };
+        },
+      },
+    }),
+  }));
   escribir = new Proxy({} as Record<string, ReturnType<typeof vi.fn>>, {
     get: (t, k: string) => (t[k] ??= vi.fn().mockResolvedValue(ok)),
   });
@@ -56,8 +69,11 @@ const vaciar = () => new Promise((r) => setTimeout(r, 0));
 
 beforeEach(() => {
   storage = new FakeStorage();
-  vi.stubGlobal('window', { localStorage: storage, addEventListener: () => {} });
+  asignar = vi.fn();
+  vi.stubGlobal('window', { localStorage: storage, addEventListener: () => {}, location: { origin: 'http://localhost:3000', assign: asignar } });
   cargar = vi.fn();
+  getUser = vi.fn().mockResolvedValue({ data: { user: { id: U1 } }, error: null });
+  cambiosDeSesion = [];
 });
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -227,15 +243,48 @@ describe('modo remoto · cuando algo no se pudo guardar', () => {
     await vi.waitFor(() => expect(store.leerAvisoDatos()).toContain('conexión'));
     expect(store.leerAvisoDatos()).not.toContain('familia');
   });
-  it('si la recarga también falla, se conservan los datos que ya había en pantalla', async () => {
+  it('si la recarga también falla, lo dice con verdad (no afirma que recargó) y conserva lo que había en pantalla', async () => {
     const store = await conDatos();
     escribir.guardarMed.mockResolvedValue({ ok: false, codigo: 'otro' });
     cargar.mockRejectedValue(new Error('sin red'));
     store.actions.saveMed(med({ id: MED, name: 'Losartán 100' }));
     await vi.waitFor(() => expect(store.leerAvisoDatos()).not.toBeNull());
-    await vaciar();
+    expect(store.leerAvisoDatos()).toContain('No pudimos recargar');
+    expect(store.leerAvisoDatos()).not.toContain('Se recargaron');
     expect(store.getSnapshot().meds).toHaveLength(1);
     expect(store.leerEstadoDatos()).toBe('listo');
+  });
+  it('un dato que la base no acepta se explica; un cambio sin efecto también', async () => {
+    const store = await conDatos();
+    escribir.guardarMed.mockResolvedValue({ ok: false, codigo: 'invalido' });
+    store.actions.saveMed(med({ id: MED, name: 'Losartán 100' }));
+    await vi.waitFor(() => expect(store.leerAvisoDatos()).toContain('no es válido'));
+    escribir.borrarNota.mockResolvedValue({ ok: false, codigo: 'sin-efecto' });
+    store.actions.deleteNote('n1');
+    await vi.waitFor(() => expect(store.leerAvisoDatos()).toContain('ya no exista'));
+  });
+  it('la recarga espera a que se vacíe la cola: no pisa los cambios que aún no salieron', async () => {
+    const store = await conDatos();
+    escribir.guardarNota.mockResolvedValueOnce({ ok: false, codigo: 'otro' }); // la primera falla
+    let liberar!: (v: unknown) => void;
+    escribir.guardarMed.mockReturnValueOnce(new Promise((r) => (liberar = r))); // la segunda queda en vuelo
+    store.actions.saveNote(note({ id: 'n1', authorId: U1 }));
+    store.actions.saveMed(med({ id: MED, name: 'Losartán 100' }));
+    await vaciar();
+    expect(cargar).toHaveBeenCalledTimes(1); // todavía NO se recargó: queda una escritura pendiente
+    expect(store.getSnapshot().meds[0].name).toBe('Losartán 100'); // y el cambio pendiente sigue a la vista
+    liberar(ok);
+    await vi.waitFor(() => expect(cargar).toHaveBeenCalledTimes(2)); // ahora sí
+    await vi.waitFor(() => expect(store.leerAvisoDatos()).toContain('Se recargaron'));
+  });
+  it('un hito que no se pudo guardar no avisa ni recarga (solo se reintenta en otra visita)', async () => {
+    const store = await conDatos();
+    escribir.actualizarHitos.mockResolvedValue({ ok: false, codigo: 'permiso' });
+    store.actions.markHito('racha-7');
+    await vaciar();
+    await vaciar();
+    expect(store.leerAvisoDatos()).toBeNull();
+    expect(cargar).toHaveBeenCalledTimes(1);
   });
   it('el aviso se puede cerrar', async () => {
     const store = await conDatos();
@@ -244,6 +293,64 @@ describe('modo remoto · cuando algo no se pudo guardar', () => {
     await vi.waitFor(() => expect(store.leerAvisoDatos()).not.toBeNull());
     store.actions.descartarAviso();
     expect(store.leerAvisoDatos()).toBeNull();
+  });
+});
+
+describe('modo remoto · cerrar sesión y sesión caída', () => {
+  it('vaciarCola espera a que salgan las escrituras pendientes', async () => {
+    const store = await conDatos();
+    let liberar!: (v: unknown) => void;
+    escribir.guardarNota.mockReturnValueOnce(new Promise((r) => (liberar = r)));
+    store.actions.saveNote(note({ id: 'n1', authorId: U1 }));
+    let terminado = false;
+    const espera = store.actions.vaciarCola().then((v) => {
+      terminado = true;
+      return v;
+    });
+    await vaciar();
+    expect(terminado).toBe(false);
+    liberar(ok);
+    expect(await espera).toBe(true);
+  });
+  it('vaciarCola no se queda colgada: con tope de tiempo devuelve false si algo no sale', async () => {
+    const store = await conDatos();
+    escribir.guardarNota.mockReturnValueOnce(new Promise(() => {})); // nunca responde
+    store.actions.saveNote(note({ id: 'n1', authorId: U1 }));
+    vi.useFakeTimers();
+    try {
+      const espera = store.actions.vaciarCola();
+      await vi.advanceTimersByTimeAsync(5001);
+      expect(await espera).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it('sin cola pendiente vaciarCola responde enseguida', async () => {
+    const store = await conDatos();
+    expect(await store.actions.vaciarCola()).toBe(true);
+  });
+  it('si la sesión caducó, no se queda en «reintentar»: vuelve al acceso con una navegación completa', async () => {
+    getUser.mockResolvedValue({ data: { user: null }, error: { message: 'sin sesión' } });
+    const store = await abrir();
+    store.actions.reintentarCarga();
+    await vi.waitFor(() => expect(asignar).toHaveBeenCalledWith('http://localhost:3000/entrar'));
+  });
+  it('si en otra pestaña se cierra la sesión o entra otra persona, esta pestaña vuelve al acceso (no queda la familia anterior a la vista)', async () => {
+    await conDatos();
+    expect(cambiosDeSesion).toHaveLength(1);
+    cambiosDeSesion[0]('TOKEN_REFRESHED', { user: { id: U1 } });
+    cambiosDeSesion[0]('INITIAL_SESSION', { user: { id: U1 } });
+    expect(asignar).not.toHaveBeenCalled();
+    cambiosDeSesion[0]('SIGNED_IN', { user: { id: 'otra-persona' } });
+    expect(asignar).toHaveBeenCalledTimes(1);
+    cambiosDeSesion[0]('SIGNED_OUT', null);
+    expect(asignar).toHaveBeenCalledTimes(2);
+  });
+  it('vigila la sesión una sola vez aunque se vuelva a cargar', async () => {
+    const store = await conDatos();
+    store.actions.reintentarCarga();
+    await vi.waitFor(() => expect(cargar).toHaveBeenCalledTimes(2));
+    expect(cambiosDeSesion).toHaveLength(1);
   });
 });
 

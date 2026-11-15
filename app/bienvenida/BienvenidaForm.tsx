@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Marco } from '@/app/entrar/EntrarForm';
 import { crearClienteNavegador } from '@/lib/supabase/navegador';
@@ -22,6 +22,8 @@ export default function BienvenidaForm() {
   const [hora, setHora] = useState('08:00');
   const [error, setError] = useState('');
   const [ocupado, setOcupado] = useState(false);
+  // Cerrojo síncrono: el estado `ocupado` tarda un render en reflejarse y dos clics seguidos crearían dos círculos.
+  const enviando = useRef(false);
 
   // Lo que se contestó en el recorrido de bienvenida (guardado en este navegador solo hasta crear el círculo).
   useEffect(() => {
@@ -36,11 +38,13 @@ export default function BienvenidaForm() {
   }, []);
 
   async function enviar() {
-    if (ocupado) return;
+    if (enviando.current) return;
     if (!nombreFamiliar.trim()) return setError('Escribe el nombre de quien cuidas.');
     if (!tuNombre.trim()) return setError('Escribe tu nombre: así te verán tus hermanos.');
     setError('');
+    enviando.current = true;
     setOcupado(true);
+    let creado = false;
     try {
       const db = crearClienteNavegador();
       const { data } = (await db?.auth.getUser()) ?? { data: { user: null } };
@@ -53,11 +57,15 @@ export default function BienvenidaForm() {
       });
       if (!r.ok) return setError(r.codigo === 'sin-suscripcion' ? SIN_SUSCRIPCION : ERROR_GENERAL);
       borrarBorrador();
+      creado = true; // el botón sigue bloqueado hasta que la página cambie: no se puede crear un segundo círculo
       router.push('/app');
     } catch {
       setError(ERROR_GENERAL);
     } finally {
-      setOcupado(false);
+      if (!creado) {
+        enviando.current = false;
+        setOcupado(false);
+      }
     }
   }
 

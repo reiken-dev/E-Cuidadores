@@ -139,9 +139,20 @@ describe('citas y notas', () => {
 });
 
 describe('plan', () => {
-  it('trial, activa y cancelada se muestran como activas; lo demás, como pago pendiente', () => {
-    for (const status of ['trial', 'active', 'canceled']) expect(planDeSuscripcion({ status, plan: 'anual', updated_at: msAIso(7) })).toEqual({ estado: 'activo', tipo: 'anual', desde: 7 });
-    for (const status of ['past_due', 'expired', 'refunded', 'chargeback']) expect(planDeSuscripcion({ status, plan: 'mensual', updated_at: msAIso(7) }).estado).toBe('pago_pendiente');
+  const AHORA = Date.parse('2026-11-14T12:00:00.000Z');
+  const futuro = msAIso(AHORA + 864e5);
+  const pasado = msAIso(AHORA - 864e5);
+  it('trial y activa se muestran como activas', () => {
+    for (const status of ['trial', 'active']) expect(planDeSuscripcion({ status, plan: 'anual', updated_at: msAIso(7) }, AHORA)).toEqual({ estado: 'activo', tipo: 'anual', desde: 7 });
+  });
+  it('una cancelada solo está al día hasta el fin de lo ya pagado (como la base); sin fecha, no', () => {
+    expect(planDeSuscripcion({ status: 'canceled', plan: 'mensual', updated_at: msAIso(7), current_period_end: futuro }, AHORA).estado).toBe('activo');
+    expect(planDeSuscripcion({ status: 'canceled', plan: 'mensual', updated_at: msAIso(7), current_period_end: pasado }, AHORA)).toMatchObject({ estado: 'pago_pendiente', motivo: 'inactiva' });
+    expect(planDeSuscripcion({ status: 'canceled', plan: 'mensual', updated_at: msAIso(7) }, AHORA)).toMatchObject({ estado: 'pago_pendiente', motivo: 'inactiva' });
+  });
+  it('no se pudo cobrar (past_due) conserva el acceso: motivo «cobro»; vencida, reembolso y contracargo: «inactiva»', () => {
+    expect(planDeSuscripcion({ status: 'past_due', plan: 'mensual', updated_at: msAIso(7) }, AHORA)).toMatchObject({ estado: 'pago_pendiente', motivo: 'cobro' });
+    for (const status of ['expired', 'refunded', 'chargeback']) expect(planDeSuscripcion({ status, plan: 'mensual', updated_at: msAIso(7) }, AHORA)).toMatchObject({ estado: 'pago_pendiente', motivo: 'inactiva' });
   });
   it('sin fila de suscripción propia (p. ej. un hermano que no paga) no se muestra un aviso de cobro ajeno', () => {
     expect(planDeSuscripcion(null).estado).toBe('activo');

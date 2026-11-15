@@ -13,6 +13,8 @@ import { Sheet, ConfirmSheet } from '@/components/app/Sheet';
 import { useFeedback } from '@/components/app/Feedback';
 import { actions, MODO_REMOTO, useAppData } from '@/lib/store';
 import { crearClienteNavegador } from '@/lib/supabase/navegador';
+import { borrarBorrador } from '@/lib/datos/borrador';
+import { DIAS_DE_DOSIS } from '@/lib/datos/remoto';
 import { MARCA } from '@/lib/marca';
 import { INVITACION_CONECTADA } from '@/lib/oferta';
 import { track } from '@/lib/analytics';
@@ -43,6 +45,10 @@ export default function FamiliaScreen() {
   // familia quede en memoria si otra persona entra después desde el mismo navegador.
   async function cerrarSesion() {
     if (MODO_REMOTO) {
+      // Antes de salir, que termine de guardarse lo último que se anotó (con tope de tiempo).
+      const todoGuardado = await actions.vaciarCola();
+      if (!todoGuardado) notify('Algún cambio reciente puede no haberse guardado. Revisa tu conexión y vuelve a entrar.');
+      borrarBorrador(); // el borrador del recorrido inicial no debe verlo quien entre después desde este navegador
       try {
         await crearClienteNavegador()?.auth.signOut();
       } catch {
@@ -258,7 +264,11 @@ export default function FamiliaScreen() {
 
       <Card as="section" className="flex flex-col gap-2 p-4" >
         <h2 className="t-sub text-[var(--text-primary)]">Tus datos</h2>
-        <p className="t-body text-[var(--text-secondary)]">{MODO_REMOTO ? 'Descarga una copia de tus datos.' : 'Descarga una copia o borra tus datos.'}</p>
+        <p className="t-body text-[var(--text-secondary)]">
+          {MODO_REMOTO
+            ? `Descarga una copia de tus datos. Incluye las dosis de los últimos ${DIAS_DE_DOSIS} días; lo anterior sigue guardado en tu cuenta.`
+            : 'Descarga una copia o borra tus datos.'}
+        </p>
         <Btn variant="secondary" size="md" full onClick={descargar}>
           <Download size={18} aria-hidden="true" />
           Descargar mis datos
@@ -570,14 +580,14 @@ function PerfilSheet({
           guardar();
         }}
       >
-        <TextInput label="Nombre" value={name} onChange={setName} error={errors.name} />
+        <TextInput label="Nombre" value={name} onChange={setName} error={errors.name} maxLength={80} />
         <TextInput label="Edad (opcional)" value={age} onChange={setAge} inputMode="numeric" error={errors.age} />
         <TextInput label="Alergias" value={allergies} onChange={setAllergies} hint="Separadas por coma. Ej: Penicilina, Ibuprofeno" />
         <TextInput label="Condiciones" value={conditions} onChange={setConditions} hint="Separadas por coma. Ej: Hipertensión, Diabetes tipo 2" />
-        <TextInput label="Médico de cabecera" value={doctorName} onChange={setDoctorName} />
-        <TextInput label="Teléfono del médico" value={doctorPhone} onChange={setDoctorPhone} type="tel" inputMode="tel" error={errors.doctorPhone} />
-        <TextInput label="Contacto de emergencia" value={emergencyName} onChange={setEmergencyName} />
-        <TextInput label="Teléfono de emergencia" value={emergencyPhone} onChange={setEmergencyPhone} type="tel" inputMode="tel" error={errors.emergencyPhone} />
+        <TextInput label="Médico de cabecera" value={doctorName} onChange={setDoctorName} maxLength={80} />
+        <TextInput label="Teléfono del médico" value={doctorPhone} onChange={setDoctorPhone} maxLength={30} type="tel" inputMode="tel" error={errors.doctorPhone} />
+        <TextInput label="Contacto de emergencia" value={emergencyName} onChange={setEmergencyName} maxLength={80} />
+        <TextInput label="Teléfono de emergencia" value={emergencyPhone} onChange={setEmergencyPhone} maxLength={30} type="tel" inputMode="tel" error={errors.emergencyPhone} />
         <Btn type="submit" size="lg" full className="mt-2">
           Guardar cambios
         </Btn>

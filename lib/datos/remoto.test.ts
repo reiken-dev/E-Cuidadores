@@ -136,21 +136,34 @@ describe('escribir', () => {
     expect(llamadas[0]).toMatchObject({ metodo: 'rpc:registrar_dosis', args: [{ c: C, m: MED, d: '2026-11-14', t: '08:00', skipped: 'olvido', by_self: false }] });
     expect(JSON.stringify(llamadas[0].args)).not.toContain('given_by');
   });
+  it('borrar o deshacer sin ninguna fila afectada tampoco es un éxito (círculo de solo lectura o ya no existe)', async () => {
+    const d = { medId: MED, date: '2026-11-14', time: '08:00' };
+    expect(await escribir.borrarMed(ctx(fakeDb({ 'meds.delete': { data: [] } }).db), MED)).toEqual({ ok: false, codigo: 'sin-efecto' });
+    expect(await escribir.borrarNota(ctx(fakeDb({ 'notes.delete': { data: [] } }).db), 'n1')).toEqual({ ok: false, codigo: 'sin-efecto' });
+    expect(await escribir.deshacerDosis(ctx(fakeDb({ 'dose_logs.delete': { data: [] } }).db), d)).toEqual({ ok: false, codigo: 'sin-efecto' });
+    expect(await escribir.borrarMed(ctx(fakeDb({ 'meds.delete': { data: [{ id: MED }] } }).db), MED)).toEqual({ ok: true });
+    expect(await escribir.borrarNota(ctx(fakeDb({ 'notes.delete': { data: [{ id: 'n1' }] } }).db), 'n1')).toEqual({ ok: true });
+    expect(await escribir.deshacerDosis(ctx(fakeDb({ 'dose_logs.delete': { data: [{ med_id: MED }] } }).db), d)).toEqual({ ok: true });
+    expect(await escribir.borrarMed(ctx(fakeDb({ 'meds.delete': { error: { code: '42501' } } }).db), MED)).toEqual({ ok: false, codigo: 'permiso' });
+  });
   it('deshacer una dosis borra por círculo, medicina, día y hora', async () => {
     const { db, llamadas } = fakeDb();
     await escribir.deshacerDosis(ctx(db), { medId: MED, date: '2026-11-14', time: '08:00' });
     expect(llamadas.filter((l) => l.metodo === 'eq').map((l) => l.args)).toEqual([['circle_id', C], ['med_id', MED], ['dose_date', '2026-11-14'], ['dose_time', '08:00']]);
   });
-  it('un error 42501 (RLS) es «permiso»; cualquier otro, «otro»', async () => {
+  it('un error 42501 (RLS) es «permiso»; una regla de la base (23514, 22001, 22P02, 23502) es «invalido»; cualquier otro, «otro»', async () => {
     expect(await escribir.guardarMed(ctx(fakeDb({ 'meds.upsert': { error: { code: '42501' } } }).db), med)).toEqual({ ok: false, codigo: 'permiso' });
+    for (const code of ['23514', '22001', '22P02', '23502']) {
+      expect(await escribir.guardarMed(ctx(fakeDb({ 'meds.upsert': { error: { code } } }).db), med)).toEqual({ ok: false, codigo: 'invalido' });
+    }
     expect(await escribir.guardarMed(ctx(fakeDb({ 'meds.upsert': { error: { code: 'XX000' } } }).db), med)).toEqual({ ok: false, codigo: 'otro' });
     expect(await escribir.registrarDosis(ctx(fakeDb({}, { error: { code: '42501' } }).db), { medId: MED, date: '2026-11-14', time: '08:00', skipped: null, bySelf: false })).toEqual({ ok: false, codigo: 'permiso' });
   });
-  it('una actualización que no cambia ninguna fila se trata como rechazo (RLS la oculta sin error)', async () => {
+  it('una actualización que no cambia ninguna fila NO es un éxito (RLS la oculta sin error): «sin-efecto»', async () => {
     const perfil: Profile = { name: 'Rosa', age: 78, relation: 'Mamá', allergies: [], conditions: [], doctorName: '', doctorPhone: '', emergencyName: '', emergencyPhone: '' };
-    expect(await escribir.actualizarPerfil(ctx(fakeDb({ 'circles.update': { data: [] } }).db), perfil)).toEqual({ ok: false, codigo: 'permiso' });
+    expect(await escribir.actualizarPerfil(ctx(fakeDb({ 'circles.update': { data: [] } }).db), perfil)).toEqual({ ok: false, codigo: 'sin-efecto' });
     expect(await escribir.actualizarPerfil(ctx(fakeDb({ 'circles.update': { data: [{ id: C }] } }).db), perfil)).toEqual({ ok: true });
-    expect(await escribir.actualizarPreguntas(ctx(fakeDb({ 'circles.update': { data: [] } }).db), 'x')).toEqual({ ok: false, codigo: 'permiso' });
+    expect(await escribir.actualizarPreguntas(ctx(fakeDb({ 'circles.update': { data: [] } }).db), 'x')).toEqual({ ok: false, codigo: 'sin-efecto' });
     expect(await escribir.actualizarHitos(ctx(fakeDb({ 'circles.update': { data: [{ id: C }] } }).db), ['racha-7'])).toEqual({ ok: true });
   });
   it('las preguntas tienen tope de 2000 caracteres y la visita solo toca la fila propia', async () => {

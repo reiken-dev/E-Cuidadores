@@ -56,6 +56,18 @@ afterEach(() => {
   vi.doUnmock('./marca');
 });
 
+describe('ids nuevos', () => {
+  it('siempre son un uuid válido, también donde no existe crypto.randomUUID (contexto no seguro): la base lo exige', async () => {
+    const { newId } = await abrir();
+    const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+    expect(newId()).toMatch(UUID);
+    vi.stubGlobal('crypto', undefined);
+    const ids = new Set(Array.from({ length: 200 }, () => newId()));
+    expect(ids.size).toBe(200);
+    for (const id of ids) expect(id).toMatch(UUID);
+  });
+});
+
 describe('arranque del store', () => {
   it('sin nada guardado arranca con los datos de ejemplo', async () => {
     const { getSnapshot, STORAGE_KEY } = await abrir();
