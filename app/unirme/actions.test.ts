@@ -75,6 +75,9 @@ describe('unirme', () => {
       if (!res.ok) mensajes.add(res.error);
     }
     expect(mensajes.size).toBe(3); // «invalida» y lo desconocido comparten mensaje
+    crearClienteServicio.mockReturnValue(servicio(() => ({ data: 'inactivo', error: null })));
+    const inactivo = await unirme(CODIGO, 'Carlos');
+    expect(!inactivo.ok && /no está activo/.test(inactivo.error)).toBe(true);
   });
   it('un error del servicio o sin clave de servicio falla cerrado', async () => {
     crearClienteServidor.mockResolvedValue(sesion({ id: 'u1' }));

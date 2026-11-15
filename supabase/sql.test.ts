@@ -608,6 +608,30 @@ describe('invitaciones (invitaciones.sql)', () => {
     expect((await db.query<{ r: string }>(unir(N, CODIGO, 'x'.repeat(81)))).rows[0].r).toBe('invalida');
   }, 60000);
 
+  it('con los ajustes: suscripción vencida del organizador → «inactivo» y no se crean enlaces; los miembros siguen en «ok»', async () => {
+    const { db, A, B } = await conInvitaciones();
+    await db.exec(leer('invitaciones-ajustes.sql'));
+    const N = await nuevaCuenta(db, 'n@x.com');
+    await db.query(crear(A));
+    await db.exec(`update public.subscriptions set status = 'expired'`);
+    expect((await db.query<{ r: string }>(unir(N))).rows[0].r).toBe('inactivo');
+    expect((await db.query<{ r: string }>(unir(B))).rows[0].r).toBe('ok'); // ya es miembro
+    expect((await db.query<{ vence: unknown }>(crear(A, 'AAAA-2222'))).rows[0].vence).toBeNull();
+    expect(await miembros(db)).toBe(2);
+    await db.exec(`update public.subscriptions set status = 'active'`);
+    expect((await db.query<{ r: string }>(unir(N))).rows[0].r).toBe('ok');
+  }, 60000);
+
+  it('con los ajustes: se ejecuta dos veces, y una persona ya en otro círculo sigue sin entrar', async () => {
+    const { db, A } = await conInvitaciones();
+    await db.exec(leer('invitaciones-ajustes.sql'));
+    await expect(db.exec(leer('invitaciones-ajustes.sql'))).resolves.not.toThrow();
+    const O = await nuevaCuenta(db, 'o@x.com');
+    await db.exec(`insert into public.circles(id, created_by, patient_name) values ('00000000-0000-0000-0000-000000000002','${O}','Otro')`);
+    await db.query(crear(A));
+    expect((await db.query<{ r: string }>(unir(O))).rows[0].r).toBe('ya_en_circulo');
+  }, 60000);
+
   it('anon y authenticated no ejecutan las funciones ni escriben invitaciones; solo el organizador las ve', async () => {
     const { db, A, B, X } = await conInvitaciones();
     await db.query(crear(A));

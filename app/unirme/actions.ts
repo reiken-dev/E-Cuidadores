@@ -55,6 +55,8 @@ export async function unirme(codigo: unknown, nombre: unknown): Promise<Respuest
       return { ok: true };
     case 'lleno':
       return { ok: false, error: `Este círculo ya tiene ${MAX_MIEMBROS} personas. Habla con quien te invitó.` };
+    case 'inactivo':
+      return { ok: false, error: 'Este círculo no está activo ahora. Pide a quien te invitó que revise su suscripción.' };
     case 'ya_en_circulo':
       return { ok: false, error: 'Tu cuenta ya pertenece a un círculo. Usa otra cuenta para unirte a este.' };
     default:
@@ -90,7 +92,9 @@ export async function crearInvitacion(): Promise<RespuestaInvitacion> {
   if (!servicio) return { ok: false, error: GENERICO };
   const codigo = codigoCirculoAleatorio();
   const { data, error } = await servicio.rpc('crear_invitacion', { p_circle: circulo, p_user: sesion.userId, p_code: codigo });
-  if (error || !data) return { ok: false, error: GENERICO };
+  // Sin fecha de vencimiento = el SQL no la creó: con la sesión ya comprobada, la causa es la suscripción vencida.
+  if (error) return { ok: false, error: GENERICO };
+  if (!data) return { ok: false, error: 'Tu suscripción no está activa: no se pueden crear enlaces nuevos.' };
   return leerInvitacion();
 }
 
