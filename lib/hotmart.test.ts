@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cuentaComoIngreso, decimalesDe, esCancelacion, esCobroFallido, estadoDeEvento, extraerAviso, faltaConfiguracionHotmart, fechaDesdeMs, hottokValido, importeContable, planAGuardar } from './hotmart';
+import { cuentaComoIngreso, debeAplicarEstado, decimalesDe, esCancelacion, esCobroFallido, estadoDeEvento, extraerAviso, faltaConfiguracionHotmart, fechaDesdeMs, hottokValido, importeContable, planAGuardar, productoPermitido } from './hotmart';
 
 describe('configuración del webhook', () => {
   it('lista lo que falta y no inventa nada cuando todo está', () => {
@@ -107,5 +107,93 @@ describe('normalizar el aviso', () => {
   it('un importe raro no rompe nada', () => {
     const raro = { ...ok, data: { ...ok.data, purchase: { transaction: 'HP2', price: { value: 'gratis' } } } };
     expect(extraerAviso(raro)?.importeMinimo).toBeNull();
+  });
+});
+
+describe('cancelación de suscripción (formato 2.0.0: sin `purchase` ni `buyer`)', () => {
+  const cancelacion = {
+    id: 'evt-9',
+    event: 'SUBSCRIPTION_CANCELLATION',
+    data: {
+      product: { id: 123 },
+      subscriber: { code: 'SUB9', email: 'Ana@Ejemplo.com' },
+      subscription: { id: 77, plan: { name: 'Plan Anual' } },
+      cancellation_date: 1736337600000,
+      date_next_charge: 1767873600000,
+    },
+  };
+  it('toma el correo de `subscriber` y arma la clave de idempotencia con la suscripción y la fecha de cancelación', () => {
+    expect(extraerAviso(cancelacion)).toEqual({
+      evento: 'SUBSCRIPTION_CANCELLATION',
+      transaccion: 'SUB-77-1736337600000',
+      correo: 'ana@ejemplo.com',
+      importeMinimo: null,
+      moneda: null,
+      productoId: '123',
+      plan: 'anual',
+      codigoSuscriptor: 'SUB9',
+      finPeriodo: '2026-01-08T12:00:00.000Z',
+    });
+  });
+  it('sin suscripción ni fecha, usa el id del evento como clave', () => {
+    const sinIds = { ...cancelacion, data: { ...cancelacion.data, subscription: { plan: { name: 'Plan Anual' } }, cancellation_date: undefined } };
+    expect(extraerAviso(sinIds)?.transaccion).toBe('EVT-evt-9');
+  });
+  it('sin ninguna clave posible devuelve null', () => {
+    const nada = { event: 'SUBSCRIPTION_CANCELLATION', data: { subscriber: { email: 'a@b.co' } } };
+    expect(extraerAviso(nada)).toBeNull();
+  });
+  it('si hay `buyer.email`, manda sobre `subscriber.email`; un correo inválido en buyer no cae al otro', () => {
+    const ambos = { ...cancelacion, data: { ...cancelacion.data, buyer: { email: 'comprador@ejemplo.com' } } };
+    expect(extraerAviso(ambos)?.correo).toBe('comprador@ejemplo.com');
+    const raro = { ...cancelacion, data: { ...cancelacion.data, buyer: { email: 'sin-arroba' } } };
+    expect(extraerAviso(raro)).toBeNull();
+  });
+});
+
+describe('fecha de fin de periodo en texto ISO', () => {
+  it('acepta el formato ISO que algún ejemplo oficial usa y rechaza lo raro', () => {
+    expect(fechaDesdeMs('2022-09-01T12:00:00.000Z')).toBe('2022-09-01T12:00:00.000Z');
+    expect(fechaDesdeMs('2022-13-45T99:00:00Z')).toBeNull();
+    expect(fechaDesdeMs('mañana')).toBeNull();
+  });
+});
+
+describe('producto permitido', () => {
+  it('sin HOTMART_PRODUCT_ID no se filtra nada', () => {
+    expect(productoPermitido('123', undefined)).toBe(true);
+    expect(productoPermitido(null, '')).toBe(true);
+    expect(productoPermitido('123', '   ')).toBe(true);
+  });
+  it('con HOTMART_PRODUCT_ID solo pasa ese producto', () => {
+    expect(productoPermitido('123', '123')).toBe(true);
+    expect(productoPermitido('123', ' 123 ')).toBe(true);
+    expect(productoPermitido('456', '123')).toBe(false);
+    expect(productoPermitido(null, '123')).toBe(false);
+  });
+});
+
+describe('¿el aviso debe cambiar el estado?', () => {
+  it('sin historial, todo aviso de alta o de baja se aplica', () => {
+    for (const e of ['PURCHASE_APPROVED', 'PURCHASE_COMPLETE', 'PURCHASE_DELAYED', 'SUBSCRIPTION_CANCELLATION', 'PURCHASE_REFUNDED', 'PURCHASE_CHARGEBACK']) {
+      expect(debeAplicarEstado(e, [])).toBe(true);
+    }
+  });
+  it('un aviso de alta tras un reembolso o contracargo de la misma transacción no devuelve el acceso', () => {
+    for (const previo of ['PURCHASE_REFUNDED', 'PURCHASE_CHARGEBACK']) {
+      for (const e of ['PURCHASE_APPROVED', 'PURCHASE_COMPLETE', 'PURCHASE_DELAYED']) {
+        expect(debeAplicarEstado(e, ['PURCHASE_APPROVED', previo])).toBe(false);
+      }
+    }
+  });
+  it('el reembolso y la baja siempre se aplican, incluso si ya hubo otro', () => {
+    expect(debeAplicarEstado('PURCHASE_REFUNDED', ['PURCHASE_CHARGEBACK'])).toBe(true);
+    expect(debeAplicarEstado('SUBSCRIPTION_CANCELLATION', ['PURCHASE_REFUNDED'])).toBe(true);
+  });
+  it('cancelado o vencido solo cuenta si esa transacción se pagó antes', () => {
+    expect(debeAplicarEstado('PURCHASE_CANCELED', [])).toBe(false);
+    expect(debeAplicarEstado('PURCHASE_EXPIRED', ['PURCHASE_DELAYED'])).toBe(false);
+    expect(debeAplicarEstado('PURCHASE_CANCELED', ['PURCHASE_APPROVED'])).toBe(true);
+    expect(debeAplicarEstado('PURCHASE_EXPIRED', ['PURCHASE_COMPLETE'])).toBe(true);
   });
 });
