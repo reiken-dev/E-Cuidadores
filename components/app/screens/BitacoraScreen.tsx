@@ -13,7 +13,7 @@ import { useFeedback } from '@/components/app/Feedback';
 import { fmtClock, keyFromMs, relativeDay } from '@/lib/dates';
 import { nameOf } from '@/lib/schedule';
 import { actions, newId, useAppData, useNow } from '@/lib/store';
-import { sincroTexto } from '@/lib/oferta';
+import { datosTexto, sincroTexto } from '@/lib/oferta';
 import { NOTE_KINDS, type Note, type NoteKind } from '@/lib/types';
 
 export default function BitacoraScreen() {
@@ -72,7 +72,7 @@ export default function BitacoraScreen() {
         <EmptyState
           escena={<EscenaNota />}
           title="Aquí se junta todo lo que van notando"
-          text={`Anota las novedades para el resumen médico.${sincroTexto(' Todo el círculo las ve.', ' Quedan en este dispositivo.')}`}
+          text={`Anota las novedades para el resumen médico.${sincroTexto(' Todo el círculo las ve.', datosTexto(' Quedan guardadas en tu cuenta.', ' Quedan en este dispositivo.'))}`}
         >
           <Btn size="lg" full onClick={() => abrir(null)}>
             Escribir la primera nota

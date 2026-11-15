@@ -17,7 +17,7 @@ import { Garantia } from '@/components/landing/Garantia';
 import { Faq } from '@/components/landing/Faq';
 import { CtaFinal } from '@/components/landing/CtaFinal';
 import { FooterLegal } from '@/components/landing/FooterLegal';
-import { correoTexto, OFERTA_ES_EJEMPLO, sincroTexto, GARANTIA_DIAS, PRECIO_ANIO, PRECIO_ANIO_POR_MES, PRECIO_MES, TRIAL_DIAS, tieneTrial, textoMesesGratis, usd } from '@/lib/oferta';
+import { correoTexto, datosTexto, OFERTA_ES_EJEMPLO, sincroTexto, GARANTIA_DIAS, PRECIO_ANIO, PRECIO_ANIO_POR_MES, PRECIO_MES, TRIAL_DIAS, tieneTrial, textoMesesGratis, usd } from '@/lib/oferta';
 import { StickyCtaMobile, StickyMiniHeader } from '@/components/landing/sticky';
 import { RevealObserver } from '@/components/landing/reveal';
 import { PruebaSocial } from '@/components/landing/PruebaSocial';
@@ -217,7 +217,10 @@ export default function LandingPage() {
             // Hoy no hay sincronización ni invitaciones que funcionen: el texto solo afirma lo que hace el código.
             respuestaMarked: sincroTexto(
               'Los datos solo los ven quienes tú invitas al Círculo de Cuidado. Nada se envía sin tu aprobación.',
-              'Hoy lo que escribes se guarda solo en este dispositivo y no se envía a ningún servidor. Compartir el círculo entre hermanos todavía no está conectado.'
+              datosTexto(
+                'Lo que escribes se guarda en tu cuenta y solo lo ve tu círculo familiar. Compartir el círculo entre hermanos todavía no está conectado.',
+                'Hoy lo que escribes se guarda solo en este dispositivo y no se envía a ningún servidor. Compartir el círculo entre hermanos todavía no está conectado.'
+              )
             ),
           },
           {

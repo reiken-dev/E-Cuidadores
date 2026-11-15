@@ -181,9 +181,13 @@ export function notaDeFila(r: FilaNota): Note {
   };
 }
 
-/** Lo único que la pantalla del plan necesita saber. La suscripción la escribe solo el servidor (webhook de Hotmart). */
+/**
+ * Lo único que la pantalla del plan necesita saber. La suscripción la escribe solo el servidor (webhook de Hotmart).
+ * RLS solo deja leer la fila PROPIA: quien no tiene una (un hermano invitado, que no paga) no ve un aviso de cobro que
+ * no es suyo. El estado real del círculo lo impone la base al escribir (circle_active).
+ */
 export function planDeSuscripcion(s: FilaSuscripcion | null): Plan {
-  if (!s) return { estado: 'pago_pendiente', tipo: 'mensual', desde: 0 };
+  if (!s) return { estado: 'activo', tipo: 'mensual', desde: 0 };
   const alDia = s.status === 'trial' || s.status === 'active' || s.status === 'canceled';
   return { estado: alDia ? 'activo' : 'pago_pendiente', tipo: s.plan === 'anual' ? 'anual' : 'mensual', desde: isoAMs(s.updated_at) ?? 0 };
 }

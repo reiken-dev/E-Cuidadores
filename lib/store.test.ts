@@ -32,6 +32,10 @@ let storage: FakeStorage;
 
 async function abrir(): Promise<Store> {
   vi.resetModules();
+  // Estas pruebas describen el modo LOCAL (demostración). No dependen de lo que valga conexiones.supabase en
+  // lib/marca.ts: así siguen pasando cuando conectes Supabase. El modo remoto se prueba en lib/store-remoto.test.ts.
+  const real = await vi.importActual<typeof import('./marca')>('./marca');
+  vi.doMock('./marca', () => ({ ...real, MARCA: { ...real.MARCA, conexiones: { ...real.MARCA.conexiones, supabase: false } } }));
   return (await import('./store')) as Store;
 }
 
@@ -49,6 +53,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
+  vi.doUnmock('./marca');
 });
 
 describe('arranque del store', () => {

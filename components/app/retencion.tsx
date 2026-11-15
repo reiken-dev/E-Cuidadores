@@ -10,7 +10,7 @@ import { AlertCircle, CheckCircle2, ChevronRight, HeartHandshake, Sparkles } fro
 import { Card, TapLink } from '@/components/app/ui';
 import { useReducedMotionSafe } from '@/components/landing/ui';
 import { MARCA } from '@/lib/marca';
-import { sincroTexto } from '@/lib/oferta';
+import { datosTexto, sincroTexto } from '@/lib/oferta';
 import { track } from '@/lib/analytics';
 import { addDays, fmtClock, keyFromMs } from '@/lib/dates';
 import { estadoDia, novedades, racha } from '@/lib/retencion';
@@ -150,7 +150,10 @@ export function PlanBanner({ data }: { data: AppData }) {
       <div className="min-w-0 flex-1">
         <p className="t-body font-semibold">No pudimos cobrar tu último pago</p>
         <p className="t-body mt-0.5 text-[var(--text-secondary)]">
-          Actualiza tu medio de pago en Hotmart para mantener el acceso. {sincroTexto('Lo que anotaron sigue guardado, y este cobro no borra nada.', 'Lo que anotaron se guarda en este dispositivo, y este cobro no borra nada.')}
+          Actualiza tu medio de pago en Hotmart para mantener el acceso. {datosTexto(
+            'Lo que anotaron sigue guardado en tu cuenta, y este cobro no borra nada. Si el acceso se suspende, podrán seguir consultándolo y descargarlo.',
+            sincroTexto('Lo que anotaron sigue guardado, y este cobro no borra nada.', 'Lo que anotaron se guarda en este dispositivo, y este cobro no borra nada.')
+          )}
         </p>
         <TapLink href={href} className="t-label mt-1 inline-flex min-h-11 items-center font-semibold text-[var(--accent-strong)] underline underline-offset-4">
           Actualizar el medio de pago

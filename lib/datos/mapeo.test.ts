@@ -143,8 +143,8 @@ describe('plan', () => {
     for (const status of ['trial', 'active', 'canceled']) expect(planDeSuscripcion({ status, plan: 'anual', updated_at: msAIso(7) })).toEqual({ estado: 'activo', tipo: 'anual', desde: 7 });
     for (const status of ['past_due', 'expired', 'refunded', 'chargeback']) expect(planDeSuscripcion({ status, plan: 'mensual', updated_at: msAIso(7) }).estado).toBe('pago_pendiente');
   });
-  it('sin suscripción no se inventa que está activa', () => {
-    expect(planDeSuscripcion(null).estado).toBe('pago_pendiente');
+  it('sin fila de suscripción propia (p. ej. un hermano que no paga) no se muestra un aviso de cobro ajeno', () => {
+    expect(planDeSuscripcion(null).estado).toBe('activo');
   });
 });
 
