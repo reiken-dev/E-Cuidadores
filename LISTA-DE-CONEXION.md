@@ -24,6 +24,7 @@ El detalle de cada paso (con las instrucciones listas para pegarle a tu IA) est�
 ## 2. Supabase (cuentas y datos)
 - [ ] Instala el cliente de Supabase: `npm install @supabase/supabase-js` (lo usan el webhook y el cron de `docs/conexion/`).
 - [ ] Crea el proyecto y ejecuta `supabase/schema.sql` y después `supabase/retencion.sql` en el editor SQL. Si cambias un archivo SQL, vuelve a ejecutarlo en un proyecto vacío primero.
+- [ ] Después ejecuta también `supabase/permisos-service-role.sql`, sobre todo si al crear el proyecto desmarcaste «Automatically expose new tables»: sin él, el webhook y el cron fallan con «permission denied for table» aunque la clave de servicio sea correcta. Es inofensivo si dejaste esa opción marcada.
 - [ ] Autenticación: `app/entrar/EntrarForm.tsx` (hash, límite de intentos, confirmar correo). Con `supabase: true` el formulario ya no simula: hasta que lo conectes, muestra que no está conectado.
 - [ ] Alta con consentimientos: al crear la cuenta, guarda las dos casillas con `docs/conexion/alta-consentimientos.ts.txt`. Sin ese registro no publiques.
 - [ ] Protege `/app` con sesión: copia la lectura de sesión de `docs/conexion/guard-sesion.ts.txt` en `lib/sesion.ts` (el marcador `[COMPLETAR]` de ese archivo debe desaparecer). Sin sesión, `/app` redirige a `/entrar`.
