@@ -12,6 +12,7 @@ vi.mock('@/components/app/AppShell', () => ({ AppShell: () => null }));
 vi.mock('@/app/app/tokens-app.css', () => ({}));
 vi.mock('./aceptar/AceptarForm', () => ({ default: () => null }));
 vi.mock('./bienvenida/BienvenidaForm', () => ({ default: () => null }));
+vi.mock('./unirme/[codigo]/UnirmeForm', () => ({ default: () => null }));
 const s = vi.hoisted(() => ({ sesionDelServidor: vi.fn(), consentimientosAlDia: vi.fn(), tieneCirculo: vi.fn(), demo: vi.fn() }));
 vi.mock('@/lib/sesion', () => ({
   sesionDelServidor: () => s.sesionDelServidor(),
@@ -23,6 +24,7 @@ vi.mock('@/lib/sesion', () => ({
 import AppLayout from './app/layout';
 import AceptarPage from './aceptar/page';
 import BienvenidaPage from './bienvenida/page';
+import UnirmePage from './unirme/[codigo]/page';
 
 const destinoDe = async (f: () => Promise<unknown>) => {
   try {
@@ -76,18 +78,58 @@ describe('página /aceptar', () => {
 
   it('con Supabase desconectado va a /entrar', async () => {
     marca.conexiones.supabase = false;
-    expect(await destinoDe(() => AceptarPage())).toBe('/entrar');
+    expect(await destinoDe(() => AceptarPage({ searchParams: Promise.resolve({}) }))).toBe('/entrar');
   });
   it('sin sesión va a /entrar', async () => {
     s.sesionDelServidor.mockResolvedValue(null);
-    expect(await destinoDe(() => AceptarPage())).toBe('/entrar');
+    expect(await destinoDe(() => AceptarPage({ searchParams: Promise.resolve({}) }))).toBe('/entrar');
   });
   it('si ya tiene los consentimientos va a /app (no hay bucle)', async () => {
     s.consentimientosAlDia.mockResolvedValue(true);
-    expect(await destinoDe(() => AceptarPage())).toBe('/app');
+    expect(await destinoDe(() => AceptarPage({ searchParams: Promise.resolve({}) }))).toBe('/app');
   });
   it('con sesión y sin consentimientos muestra el formulario', async () => {
-    expect(await destinoDe(() => AceptarPage())).toBe('SIN-REDIRECT');
+    expect(await destinoDe(() => AceptarPage({ searchParams: Promise.resolve({}) }))).toBe('SIN-REDIRECT');
+  });
+  it('tras aceptar vuelve a la ruta interna pedida (el enlace de un hermano) y nunca a una externa', async () => {
+    s.consentimientosAlDia.mockResolvedValue(true);
+    expect(await destinoDe(() => AceptarPage({ searchParams: Promise.resolve({ next: '/unirme/K7QD-3MPX' }) }))).toBe('/unirme/K7QD-3MPX');
+    expect(await destinoDe(() => AceptarPage({ searchParams: Promise.resolve({ next: 'https://evil.com' }) }))).toBe('/app');
+  });
+});
+
+describe('página /unirme/[codigo]', () => {
+  const abrir = (codigo: string) => destinoDe(() => UnirmePage({ params: Promise.resolve({ codigo }) }));
+  beforeEach(() => {
+    marca.conexiones.supabase = true;
+    s.sesionDelServidor.mockReset().mockResolvedValue({ userId: 'u1' });
+    s.consentimientosAlDia.mockReset().mockResolvedValue(true);
+  });
+
+  it('con Supabase desconectado va a /entrar', async () => {
+    marca.conexiones.supabase = false;
+    expect(await abrir('K7QD-3MPX')).toBe('/entrar');
+  });
+  it('sin sesión muestra la invitación (no redirige: primero se crea la cuenta)', async () => {
+    s.sesionDelServidor.mockResolvedValue(null);
+    expect(await abrir('K7QD-3MPX')).toBe('SIN-REDIRECT');
+  });
+  it('con sesión y sin consentimientos va a /aceptar y conserva el enlace', async () => {
+    s.consentimientosAlDia.mockResolvedValue(false);
+    expect(await abrir('K7QD-3MPX')).toBe('/aceptar?next=%2Funirme%2FK7QD-3MPX');
+  });
+  it('con sesión y consentimientos muestra el formulario; un código mal formado, el aviso', async () => {
+    s.tieneCirculo.mockResolvedValue(false);
+    expect(await abrir('K7QD-3MPX')).toBe('SIN-REDIRECT');
+    expect(await abrir('../app')).toBe('SIN-REDIRECT');
+  });
+  it('un enlace con codificación rota no da error: muestra «no sirve»', async () => {
+    expect(await abrir('%E0%A4%A')).toBe('SIN-REDIRECT');
+  });
+  it('quien ya tiene un círculo recibe el aviso antes de escribir su nombre', async () => {
+    s.tieneCirculo.mockResolvedValue(true);
+    const r = (await UnirmePage({ params: Promise.resolve({ codigo: 'K7QD-3MPX' }) })) as { props: { yaTieneCirculo?: boolean } };
+    expect(r.props.yaTieneCirculo).toBe(true);
   });
 });
 

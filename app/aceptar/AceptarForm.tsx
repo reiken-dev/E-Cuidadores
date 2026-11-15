@@ -6,7 +6,7 @@ import { CircleAlert } from 'lucide-react';
 import { Casilla, Marco } from '@/app/entrar/EntrarForm';
 import { aceptarConsentimientos } from './actions';
 
-export default function AceptarForm() {
+export default function AceptarForm({ siguiente = '/app' }: { siguiente?: string }) {
   const router = useRouter();
   const [terminos, setTerminos] = useState(false);
   const [salud, setSalud] = useState(false);
@@ -30,7 +30,7 @@ export default function AceptarForm() {
         setError(r.error);
         return;
       }
-      router.push('/app');
+      router.push(siguiente);
       router.refresh();
     });
   }

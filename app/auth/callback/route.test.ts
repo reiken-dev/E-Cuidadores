@@ -74,6 +74,12 @@ describe('GET /auth/callback', () => {
     tieneConsentimientos.mockResolvedValue(false);
     expect(destino(await pedir('/auth/callback?code=abc&next=/app'))).toBe(`${ORIGEN}/aceptar`);
   });
+  it('sin consentimientos conserva el destino al pasar por /aceptar (enlace de un hermano)', async () => {
+    crearClienteServidor.mockResolvedValue(db());
+    tieneConsentimientos.mockResolvedValue(false);
+    expect(destino(await pedir('/auth/callback?code=abc&next=/unirme/K7QD-3MPX'))).toBe(`${ORIGEN}/aceptar?next=%2Funirme%2FK7QD-3MPX`);
+    expect(destino(await pedir('/auth/callback?code=abc&next=//evil.com'))).toBe(`${ORIGEN}/aceptar`);
+  });
   it('con todo en orden va a /app (o a la ruta interna pedida)', async () => {
     crearClienteServidor.mockResolvedValue(db());
     expect(destino(await pedir('/auth/callback?code=abc'))).toBe(`${ORIGEN}/app`);

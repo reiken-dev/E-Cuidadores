@@ -84,7 +84,7 @@ export const sincroTexto = (conSincronizacion: string, local: string) => (SINCRO
  * Mientras sea false, el mensaje para invitar a un hermano NO lleva enlace (un enlace que da 404 es una promesa rota).
  * Ponlo en true SOLO cuando la ruta funcione (docs/conexion y LISTA-DE-CONEXION.md).
  */
-export const INVITACION_CONECTADA = false;
+export const INVITACION_CONECTADA = true;
 
 /**
  * Si te cobran una RENOVACIÓN que no esperabas, ¿cuántos días tienen para pedir la devolución?

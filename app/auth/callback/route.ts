@@ -40,9 +40,12 @@ export async function GET(request: NextRequest) {
   const { data, error } = await db.auth.getUser();
   if (error || !data.user) return fallo;
 
+  // Destino tras entrar; se conserva si hay que pasar antes por /aceptar (p. ej. el enlace de un hermano).
+  const destino = rutaSegura(searchParams.get('next'));
+  const aceptar = destino === '/app' ? `${origin}/aceptar` : `${origin}/aceptar?next=${encodeURIComponent(destino)}`;
   const alta = await registrarConsentimientos(db, data.user);
   // Alguna casilla venía sin marcar: la sesión es legítima, así que se resuelve en /aceptar.
-  if (!alta.ok && alta.incompletos) return NextResponse.redirect(`${origin}/aceptar`);
+  if (!alta.ok && alta.incompletos) return NextResponse.redirect(aceptar);
   if (!alta.ok) {
     // No se pudo guardar: se cierra la sesión que acaba de abrirse.
     await db.auth.signOut();
@@ -50,7 +53,7 @@ export async function GET(request: NextRequest) {
   }
   // Sin los dos consentimientos guardados (p. ej. entró por un enlace sin marcar las casillas) no pasa a /app:
   // va a /aceptar, donde los marca y se guardan desde el servidor.
-  if (!(await tieneConsentimientos(db))) return NextResponse.redirect(`${origin}/aceptar`);
+  if (!(await tieneConsentimientos(db))) return NextResponse.redirect(aceptar);
 
-  return NextResponse.redirect(`${origin}${rutaSegura(searchParams.get('next'))}`);
+  return NextResponse.redirect(`${origin}${destino}`);
 }
