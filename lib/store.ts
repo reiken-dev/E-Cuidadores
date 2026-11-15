@@ -187,18 +187,36 @@ function vigilarSesion(db: SupabaseClient, userId: string) {
  * Lee el círculo del servidor. `silenciosa`: no vuelve al estado «cargando» (recarga tras un fallo al guardar).
  * Devuelve 'descartada' si, mientras se leía, llegaron escrituras nuevas: aplicar esa lectura pisaría cambios aún sin enviar.
  */
-async function hidratar(silenciosa = false): Promise<'ok' | 'error' | 'descartada'> {
+type Lectura = 'ok' | 'error' | 'descartada';
+let lecturas: Promise<unknown> = Promise.resolve();
+let generacion = 0; // sube con cada escritura nueva: una lectura que empezó antes ya no refleja lo que la persona hizo
+
+/** Una sola lectura a la vez y en orden: el sondeo y la recarga tras un fallo nunca se pisan entre sí. */
+function hidratar(silenciosa = false): Promise<Lectura> {
+  const p = lecturas.then(() => leer(silenciosa));
+  lecturas = p;
+  return p;
+}
+
+/** Un error de red o de servidor al validar la sesión NO significa que la sesión venció: no se expulsa a nadie por eso. */
+function esFalloDeRed(e: { name?: string; status?: number } | null): boolean {
+  return !!e && (e.name === 'AuthRetryableFetchError' || e.status === 0 || (e.status ?? 0) >= 500);
+}
+
+async function leer(silenciosa: boolean): Promise<Lectura> {
   if (!MODO_REMOTO || typeof window === 'undefined') return 'error';
   if (!silenciosa) {
     estadoDatos = 'cargando';
     emit();
   }
-  let resultado: 'ok' | 'error' | 'descartada' = 'error';
+  let resultado: Lectura = 'error';
+  const generacionAlEmpezar = generacion;
   try {
     const db = crearClienteNavegador();
     if (!db) throw new Error('sin-cliente');
     const { data, error } = await db.auth.getUser();
     if (error || !data.user) {
+      if (esFalloDeRed(error)) throw new Error('sin-red'); // red inestable: se conservan los datos y se reintenta
       irAEntrar(); // sesión caducada o cerrada: no tiene sentido «reintentar»
       throw new Error('sin-sesion');
     }
@@ -206,10 +224,10 @@ async function hidratar(silenciosa = false): Promise<'ok' | 'error' | 'descartad
     const r = await cargarCirculo(db, data.user.id, { simpleMode: leerSimple() });
     if (!r) throw new Error('sin-circulo');
     contexto = { db, circleId: r.circleId, userId: data.user.id };
-    if (silenciosa && pendientes > 0) {
+    if (silenciosa && (pendientes > 0 || generacion !== generacionAlEmpezar)) {
       resultado = 'descartada';
     } else {
-      // Un sondeo que no trae nada nuevo conserva el mismo objeto: así la pantalla no se vuelve a pintar.
+      // Un sondeo sin novedades conserva el mismo objeto y la pantalla no se repinta (salvo campos que dependen de la hora).
       if (!(silenciosa && cache && JSON.stringify(cache) === JSON.stringify(r.datos))) cache = r.datos;
       // «Mientras no estabas» usa la última visita ANTERIOR a esta sesión: se fija con el primer dato real.
       if (primeraCarga) {
@@ -231,15 +249,28 @@ async function hidratar(silenciosa = false): Promise<'ok' | 'error' | 'descartad
 export const INTERVALO_SONDEO_MS = 30000;
 let sondeoTimer: ReturnType<typeof setInterval> | null = null;
 let sondeando = false;
+let fallosSondeo = 0;
+const AVISO_SIN_ACTUALIZAR = 'No pudimos actualizar lo que anotan tus hermanos. Revisa tu conexión: lo que ves puede estar desactualizado.';
 
 /** Lee el círculo si es seguro: pestaña visible, datos ya cargados y nada sin enviar (una lectura pisaría lo que aún no salió). */
 async function sondear() {
   if (!MODO_REMOTO || sondeando) return;
   if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
   if (estadoDatos !== 'listo' || pendientes > 0) return;
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
   sondeando = true;
   try {
-    await hidratar(true);
+    const r = await hidratar(true);
+    if (r === 'ok') {
+      fallosSondeo = 0;
+      if (aviso === AVISO_SIN_ACTUALIZAR) {
+        aviso = null;
+        emit();
+      }
+    } else if (r === 'error' && ++fallosSondeo === 3 && !aviso) {
+      aviso = AVISO_SIN_ACTUALIZAR;
+      emit();
+    }
   } finally {
     sondeando = false;
   }
@@ -286,6 +317,7 @@ const MENSAJES: Record<CodigoError, string> = {
 function enviar(op: (c: Contexto) => Promise<Resultado>, opciones: { silencioso?: boolean } = {}) {
   if (!MODO_REMOTO) return;
   pendientes++;
+  generacion++;
   cola = cola.then(async () => {
     let codigo: CodigoError | null = null;
     try {

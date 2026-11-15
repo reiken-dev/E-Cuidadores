@@ -476,6 +476,62 @@ describe('modo remoto · ver los cambios de los hermanos (sondeo, ECU-10)', () =
     baja();
   });
 
+  it('una lectura que empezó ANTES de una escritura ya terminada no la pisa (generación)', async () => {
+    const { store, baja } = await abierto();
+    let entregar!: (v: unknown) => void;
+    cargar.mockReturnValueOnce(new Promise((r) => (entregar = r)));
+    await avanzar(30000); // el sondeo empieza y se queda esperando al servidor
+    store.actions.saveNote(note({ id: 'mia', authorId: U1 })); // entra y termina mientras tanto
+    await avanzar(0);
+    entregar({ circleId: 'c1', datos: delServidor() }); // la lectura vieja, sin «mia»
+    await avanzar(0);
+    expect(store.getSnapshot().notes.map((n) => n.id)).toEqual(['mia']);
+    baja();
+  });
+
+  it('un error de red al validar la sesión durante el sondeo NO expulsa a nadie', async () => {
+    const { store, baja } = await abierto();
+    getUser.mockResolvedValue({ data: { user: null }, error: { name: 'AuthRetryableFetchError', status: 0, message: 'fetch' } });
+    await avanzar(30000);
+    expect(asignar).not.toHaveBeenCalled();
+    expect(store.leerEstadoDatos()).toBe('listo');
+    expect(store.getSnapshot().meds).toHaveLength(1);
+    baja();
+  });
+
+  it('tras 3 fallos seguidos avisa que no se actualiza; al recuperarse, el aviso desaparece', async () => {
+    const { store, baja } = await abierto();
+    cargar.mockRejectedValue(new Error('sin red'));
+    await avanzar(30000);
+    await avanzar(30000);
+    expect(store.leerAvisoDatos()).toBeNull();
+    await avanzar(30000);
+    expect(store.leerAvisoDatos()).toMatch(/hermanos/);
+    cargar.mockResolvedValue({ circleId: 'c1', datos: delServidor() });
+    await avanzar(30000);
+    expect(store.leerAvisoDatos()).toBeNull();
+    baja();
+  });
+
+  it('el sondeo y la recarga tras un fallo no se solapan: una lectura a la vez', async () => {
+    const { store, baja } = await abierto();
+    let activas = 0;
+    let maxima = 0;
+    cargar.mockImplementation(async () => {
+      activas++;
+      maxima = Math.max(maxima, activas);
+      await new Promise((r) => setTimeout(r, 1000));
+      activas--;
+      return { circleId: 'c1', datos: delServidor() };
+    });
+    escribir.guardarNota.mockResolvedValue({ ok: false, codigo: 'otro' });
+    await avanzar(30000); // empieza el sondeo
+    store.actions.saveNote(note({ id: 'x', authorId: U1 })); // falla y pide recargar
+    await avanzar(5000);
+    expect(maxima).toBe(1);
+    baja();
+  });
+
   it('al quitar la última pantalla se detiene el sondeo', async () => {
     const { baja } = await abierto();
     baja();
