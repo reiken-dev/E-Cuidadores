@@ -35,7 +35,7 @@ async function base() {
 }
 
 /** Ejecuta fn como el rol y el usuario indicados (como lo hace la API de Supabase) y deshace todo al terminar. */
-async function como<T>(db: PGlite, rol: 'anon' | 'authenticated', uid: string | null, fn: () => Promise<T>): Promise<T> {
+async function como<T>(db: PGlite, rol: 'anon' | 'authenticated' | 'service_role', uid: string | null, fn: () => Promise<T>): Promise<T> {
   await db.exec(`begin; set local role ${rol}; select set_config('request.jwt.claim.sub', '${uid ?? ''}', true);`);
   try {
     return await fn();
@@ -333,5 +333,64 @@ describe('libro de ingresos y enlace de compras', () => {
     expect(await vigente('expired', futuro)).toBe(false);
     expect(await vigente('refunded', futuro)).toBe(false);
     expect(await vigente('chargeback', futuro)).toBe(false);
+  }, 60000);
+});
+
+describe('permisos de service_role (proyecto con "Automatically expose new tables" desmarcado)', () => {
+  /** Como `base()`, pero SIN los privilegios por defecto sobre public: así queda un proyecto con esa opción apagada. */
+  async function sinPrivilegiosPorDefecto() {
+    const db = new PGlite();
+    await db.exec(`
+      create role anon; create role authenticated; create role service_role bypassrls; -- como en Supabase: service_role salta RLS
+      create schema auth;
+      create table auth.users (id uuid primary key default gen_random_uuid(), email text, email_confirmed_at timestamptz, raw_user_meta_data jsonb default '{}');
+      create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub', true),'')::uuid $$;
+      grant usage on schema auth to anon, authenticated, service_role;
+      grant usage on schema public to anon, authenticated, service_role;
+    `);
+    await db.exec(leer('schema.sql'));
+    await db.exec(leer('retencion.sql'));
+    return db;
+  }
+  const leerComoServicio = (db: PGlite, tabla: string) => como(db, 'service_role', null, () => db.query(`select * from public.${tabla}`));
+
+  it('sin permisos-service-role.sql, el webhook no podría leer ni escribir (el fallo que se vio en un proyecto real)', async () => {
+    const db = await sinPrivilegiosPorDefecto();
+    for (const tabla of ['payment_events', 'pending_purchases', 'subscriptions']) {
+      await expect(leerComoServicio(db, tabla)).rejects.toThrow(/permission denied/);
+    }
+  }, 60000);
+
+  it('con permisos-service-role.sql, service_role lee y escribe lo que usan el webhook y el cron', async () => {
+    const db = await sinPrivilegiosPorDefecto();
+    await db.exec(leer('permisos-service-role.sql'));
+    await como(db, 'service_role', null, async () => {
+      await db.exec(`insert into public.pending_purchases(buyer_email,status) values ('p@x.com','active')`);
+      await db.exec(`insert into public.payment_events(hotmart_transaction,event,buyer_email,amount_minor,currency,payload) values ('T1','PURCHASE_APPROVED','p@x.com',999,'USD','{}')`);
+      expect((await db.query(`select * from public.payment_events`)).rows).toHaveLength(1);
+      expect((await db.query(`select * from public.libro_ingresos`)).rows).toHaveLength(1);
+      expect((await db.query(`select * from public.retention_ghost_circles`)).rows).toHaveLength(0);
+      expect((await db.query(`select public.weekly_digest('00000000-0000-0000-0000-000000000001')`)).rows).toHaveLength(1);
+    });
+  }, 60000);
+
+  it('se puede ejecutar dos veces sin error (idempotente)', async () => {
+    const db = await sinPrivilegiosPorDefecto();
+    await db.exec(leer('permisos-service-role.sql'));
+    await expect(db.exec(leer('permisos-service-role.sql'))).resolves.not.toThrow();
+  }, 60000);
+
+  it('no abre nada a anon ni a authenticated: los pagos y las compras siguen cerrados al navegador', async () => {
+    const db = await sinPrivilegiosPorDefecto();
+    await db.exec(leer('permisos-service-role.sql'));
+    const X = (await db.query<{ id: string }>(`insert into auth.users(email, email_confirmed_at) values ('x@x.com', now()) returning id`)).rows[0].id;
+    for (const rol of ['anon', 'authenticated'] as const) {
+      for (const tabla of ['payment_events', 'pending_purchases', 'libro_ingresos', 'retention_ghost_circles']) {
+        await expect(como(db, rol, rol === 'authenticated' ? X : null, () => db.query(`select * from public.${tabla}`))).rejects.toThrow(/permission denied/);
+      }
+    }
+    await expect(
+      como(db, 'authenticated', X, () => db.query(`insert into public.subscriptions(user_id,status) values ('${X}','active')`))
+    ).rejects.toThrow();
   }, 60000);
 });
