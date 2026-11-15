@@ -209,7 +209,8 @@ async function hidratar(silenciosa = false): Promise<'ok' | 'error' | 'descartad
     if (silenciosa && pendientes > 0) {
       resultado = 'descartada';
     } else {
-      cache = r.datos;
+      // Un sondeo que no trae nada nuevo conserva el mismo objeto: así la pantalla no se vuelve a pintar.
+      if (!(silenciosa && cache && JSON.stringify(cache) === JSON.stringify(r.datos))) cache = r.datos;
       // «Mientras no estabas» usa la última visita ANTERIOR a esta sesión: se fija con el primer dato real.
       if (primeraCarga) {
         seenBefore = null;
@@ -224,6 +225,44 @@ async function hidratar(silenciosa = false): Promise<'ok' | 'error' | 'descartad
   }
   emit();
   return resultado;
+}
+
+/* ── Sondeo: ver lo que anotan los hermanos (ECU-10). Sin websockets: al volver a la app y cada 30 s con la pestaña visible ── */
+export const INTERVALO_SONDEO_MS = 30000;
+let sondeoTimer: ReturnType<typeof setInterval> | null = null;
+let sondeando = false;
+
+/** Lee el círculo si es seguro: pestaña visible, datos ya cargados y nada sin enviar (una lectura pisaría lo que aún no salió). */
+async function sondear() {
+  if (!MODO_REMOTO || sondeando) return;
+  if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+  if (estadoDatos !== 'listo' || pendientes > 0) return;
+  sondeando = true;
+  try {
+    await hidratar(true);
+  } finally {
+    sondeando = false;
+  }
+}
+
+const alVolver = () => {
+  if (document.visibilityState === 'visible') void sondear();
+};
+const alReconectar = () => void sondear();
+
+function iniciarSondeo() {
+  if (sondeoTimer || typeof window === 'undefined') return;
+  sondeoTimer = setInterval(() => void sondear(), INTERVALO_SONDEO_MS);
+  document.addEventListener('visibilitychange', alVolver);
+  window.addEventListener('online', alReconectar);
+}
+
+function detenerSondeo() {
+  if (sondeoTimer) clearInterval(sondeoTimer);
+  sondeoTimer = null;
+  if (typeof window === 'undefined') return;
+  document.removeEventListener('visibilitychange', alVolver);
+  window.removeEventListener('online', alReconectar);
 }
 
 function iniciarHidratacion() {
@@ -296,6 +335,7 @@ function subscribe(cb: () => void): () => void {
   listeners.add(cb);
   if (MODO_REMOTO) {
     iniciarHidratacion();
+    iniciarSondeo();
     if (!avisoAntesDeSalir && typeof window !== 'undefined') {
       avisoAntesDeSalir = true;
       // Cerrar o recargar la pestaña con cambios sin enviar los perdería: el navegador pregunta antes.
@@ -318,8 +358,12 @@ function subscribe(cb: () => void): () => void {
   }
   return () => {
     listeners.delete(cb);
+    if (MODO_REMOTO && listeners.size === 0) detenerSondeo();
   };
 }
+
+/** Suscripción al store (la usan los hooks; se exporta para probar el sondeo). */
+export const suscribirAlStore = subscribe;
 
 export function useAppData(): AppData {
   return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);

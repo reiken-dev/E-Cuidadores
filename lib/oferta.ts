@@ -74,10 +74,15 @@ export const datosTexto = (enLaCuenta: string, local: string) => (DATOS_EN_LA_CU
  * ¿Ya conectaste tu base de datos para que lo que anota un hermano lo vean los demás en SUS teléfonos?
  * Mientras sea false, los textos no prometen que "todos lo ven" (en la plantilla los datos viven en un solo dispositivo).
  * Ponlo en true SOLO cuando la sincronización real funcione (LISTA-DE-CONEXION.md); `npm run verificar` te lo recuerda.
+ * ECU-10: con Supabase conectado la app lee el círculo al abrir, al volver y cada 30 s (lib/store.ts, sin websockets).
  */
-export const SINCRONIZACION_CONECTADA = false;
-/** Elige el texto según haya o no sincronización real. */
-export const sincroTexto = (conSincronizacion: string, local: string) => (SINCRONIZACION_CONECTADA ? conSincronizacion : local);
+export const SINCRONIZACION_CONECTADA = true;
+/**
+ * Elige el texto según haya o no sincronización real. Con Supabase desconectado (demostración) los datos viven en un
+ * solo dispositivo, así que nunca se promete que «todos lo ven», aunque la constante esté en true.
+ */
+export const sincroTexto = (conSincronizacion: string, local: string) =>
+  SINCRONIZACION_CONECTADA && MARCA.conexiones.supabase ? conSincronizacion : local;
 
 /**
  * ¿Ya existe la ruta /unirme/[código] con códigos aleatorios generados en el servidor?
