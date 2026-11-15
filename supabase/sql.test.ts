@@ -394,3 +394,122 @@ describe('permisos de service_role (proyecto con "Automatically expose new table
     ).rejects.toThrow();
   }, 60000);
 });
+
+describe('datos reales (datos-reales.sql)', () => {
+  async function conDatosReales() {
+    const t = await dosCuentas();
+    await t.db.exec(leer('datos-reales.sql'));
+    return t;
+  }
+  const dosis = (db: PGlite) => db.query<{ given_by: string; given_by_name: string; given_by_self: boolean; skipped_reason: string | null }>(
+    `select given_by, given_by_name, given_by_self, skipped_reason from public.dose_logs order by given_at`
+  );
+  const llamar = (skipped: string | null = null, bySelf = false) =>
+    `select public.registrar_dosis('${C}','${M}','2026-11-14','08:00',${skipped ? `'${skipped}'` : 'null'},${bySelf})`;
+
+  it('se ejecuta sin errores y dos veces seguidas (idempotente)', async () => {
+    const { db } = await conDatosReales();
+    await expect(db.exec(leer('datos-reales.sql'))).resolves.not.toThrow();
+  }, 60000);
+
+  it('un miembro registra una dosis y queda firmada con su nombre, aunque el navegador no lo diga', async () => {
+    const { db, B } = await conDatosReales();
+    await como(db, 'authenticated', B, async () => {
+      await db.query(llamar());
+      const r = (await dosis(db)).rows;
+      expect(r).toHaveLength(1);
+      expect(r[0]).toMatchObject({ given_by: B, given_by_name: 'Bea', given_by_self: false, skipped_reason: null });
+    });
+  }, 60000);
+
+  it('registrar dos veces la misma dosis deja una sola: la última gana (también el motivo de omisión)', async () => {
+    const { db, A } = await conDatosReales();
+    await como(db, 'authenticated', A, async () => {
+      await db.query(llamar());
+      await db.query(llamar('olvido'));
+      const r = (await dosis(db)).rows;
+      expect(r).toHaveLength(1);
+      expect(r[0].skipped_reason).toBe('olvido');
+      await db.query(llamar(null, true));
+      const s = (await dosis(db)).rows;
+      expect(s).toHaveLength(1);
+      expect(s[0]).toMatchObject({ skipped_reason: null, given_by_self: true });
+    });
+  }, 60000);
+
+  it('un motivo de omisión inventado se rechaza y NO borra la dosis que ya estaba (transacción)', async () => {
+    const { db, A } = await conDatosReales();
+    await como(db, 'authenticated', A, async () => {
+      await db.query(llamar());
+      await db.exec('savepoint antes');
+      await expect(db.query(llamar('inventado'))).rejects.toThrow();
+      await db.exec('rollback to savepoint antes');
+      expect((await dosis(db)).rows).toHaveLength(1);
+    });
+  }, 60000);
+
+  it('una persona ajena a la familia no puede registrar dosis en ese círculo', async () => {
+    const { db, X } = await conDatosReales();
+    await expect(como(db, 'authenticated', X, () => db.query(llamar()))).rejects.toThrow();
+  }, 60000);
+
+  it('con la suscripción de la organizadora vencida, los hermanos no pueden registrar dosis', async () => {
+    const { db, A, B } = await conDatosReales();
+    await db.exec(`update public.subscriptions set status='expired' where user_id='${A}'`);
+    await expect(como(db, 'authenticated', B, () => db.query(llamar()))).rejects.toThrow();
+  }, 60000);
+
+  it('anon no puede ejecutar la función', async () => {
+    const { db } = await conDatosReales();
+    await expect(como(db, 'anon', null, () => db.query(llamar()))).rejects.toThrow(/permission denied/);
+  }, 60000);
+
+  it('cada quien actualiza solo su propia «última visita», y solo esa columna', async () => {
+    const { db, A, B } = await conDatosReales();
+    await como(db, 'authenticated', B, async () => {
+      const propia = await db.query(`update public.members set last_seen_at = now() where user_id = '${B}' returning 1`);
+      expect(propia.rows).toHaveLength(1);
+      const ajena = await db.query(`update public.members set last_seen_at = now() where user_id = '${A}' returning 1`);
+      expect(ajena.rows).toHaveLength(0);
+    });
+    await expect(
+      como(db, 'authenticated', B, () => db.query(`update public.members set name = 'Otro' where user_id = '${B}'`))
+    ).rejects.toThrow(/permission denied/);
+    await expect(
+      como(db, 'authenticated', B, () => db.query(`update public.members set role = 'Organizador' where user_id = '${B}'`))
+    ).rejects.toThrow(/permission denied/);
+  }, 60000);
+
+  it('un miembro guarda preguntas, fecha de alergias y hitos del círculo; un ajeno no', async () => {
+    const { db, B, X } = await conDatosReales();
+    await como(db, 'authenticated', B, async () => {
+      const r = await db.query(
+        `update public.circles set questions = '¿Subimos la dosis?', allergies_at = '2026-11-01', celebrated_milestones = '{racha-7}' where id = '${C}' returning 1`
+      );
+      expect(r.rows).toHaveLength(1);
+    });
+    await como(db, 'authenticated', X, async () => {
+      const r = await db.query(`update public.circles set questions = 'x' where id = '${C}' returning 1`);
+      expect(r.rows).toHaveLength(0);
+    });
+  }, 60000);
+
+  it('las preguntas tienen tope de 2000 caracteres y la columna de horario existe en medicinas', async () => {
+    const { db, A } = await conDatosReales();
+    await expect(
+      como(db, 'authenticated', A, () => db.query(`update public.circles set questions = '${'x'.repeat(2001)}' where id = '${C}'`))
+    ).rejects.toThrow();
+    await db.exec(`update public.meds set schedule_from = now() where id = '${M}'`);
+    expect((await db.query(`select schedule_from from public.meds where id = '${M}'`)).rows[0]).toBeTruthy();
+  }, 60000);
+
+  it('el navegador sigue sin poder cambiar quién creó el círculo ni escribir pagos', async () => {
+    const { db, A } = await conDatosReales();
+    await expect(
+      como(db, 'authenticated', A, () => db.query(`update public.circles set created_by = '${A}' where id = '${C}'`))
+    ).rejects.toThrow(/permission denied/);
+    await expect(
+      como(db, 'authenticated', A, () => db.query(`insert into public.payment_events(hotmart_transaction,event,buyer_email,payload) values ('T','X','a@x.com','{}')`))
+    ).rejects.toThrow();
+  }, 60000);
+});

@@ -10,12 +10,12 @@ import { MotionConfig, motion } from 'motion/react';
 import { Circulo } from '@/components/brand/Circulo';
 import { useReducedMotionSafe } from '@/components/landing/ui';
 import { usePathname } from 'next/navigation';
-import { BookText, CalendarDays, House, Info, Pill, Users, X, type LucideIcon } from 'lucide-react';
+import { BookText, CalendarDays, CircleAlert, House, Info, Pill, Users, X, type LucideIcon } from 'lucide-react';
 import { FeedbackProvider } from './Feedback';
-import { Card, Skeleton } from './ui';
+import { Btn, Card, Skeleton } from './ui';
 import { PlanBanner } from './retencion';
 import { nextDoseInfo } from '@/lib/schedule';
-import { useAppData, useNow, useUiReady } from '@/lib/store';
+import { actions, useAppData, useAvisoDatos, useEstadoDatos, useNow, useUiReady } from '@/lib/store';
 
 const TABS: { href: string; label: string; icon: LucideIcon; match: (p: string) => boolean }[] = [
   { href: '/app', label: 'Hoy', icon: House, match: (p) => p === '/app' },
@@ -28,6 +28,8 @@ const TABS: { href: string; label: string; icon: LucideIcon; match: (p: string) 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const ready = useUiReady();
+  const estadoDatos = useEstadoDatos();
+  const avisoDatos = useAvisoDatos();
   const reduce = useReducedMotionSafe();
   const data = useAppData();
   const [avisoCerrado, setAvisoCerrado] = useState(false);
@@ -83,8 +85,35 @@ export function AppShell({ children }: { children: ReactNode }) {
                 </button>
               </p>
             )}
+            {avisoDatos && (
+              <p
+                role="alert"
+                className="no-print t-body mb-3 flex w-full items-start gap-2 rounded-[var(--radius-card)] bg-[var(--surface-2)] px-3 py-2 font-medium text-[var(--text-primary)]"
+              >
+                <CircleAlert size={18} aria-hidden="true" className="mt-0.5 shrink-0 text-[var(--accent)]" />
+                <span>{avisoDatos}</span>
+                <button
+                  type="button"
+                  onClick={() => actions.descartarAviso()}
+                  aria-label="Cerrar este aviso"
+                  className="-my-2 -mr-2 ml-auto flex size-11 shrink-0 items-center justify-center rounded-full text-[var(--text-secondary)]"
+                >
+                  <X size={14} aria-hidden="true" />
+                </button>
+              </p>
+            )}
             <PlanBanner data={data} />
-            {ready ? (
+            {estadoDatos === 'error' ? (
+              <Card as="section" className="flex flex-col gap-3 p-4">
+                <h1 className="t-sub text-[var(--text-primary)]">No pudimos cargar tus datos</h1>
+                <p role="alert" className="t-body text-[var(--text-secondary)]">
+                  Revisa tu conexión e inténtalo de nuevo. Tus datos siguen guardados en tu cuenta.
+                </p>
+                <Btn size="lg" full onClick={() => actions.reintentarCarga()}>
+                  Reintentar
+                </Btn>
+              </Card>
+            ) : ready ? (
               <motion.div
                 key={pathname}
                 initial={{ opacity: 0.5, y: reduce ? 0 : 8 }}

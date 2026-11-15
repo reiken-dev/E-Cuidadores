@@ -11,11 +11,14 @@ import { Avatar, Btn, Card, ChipToggle, PageHeader, Pill, Switch, TextInput, btn
 import { IconChip } from '@/components/landing/ui';
 import { Sheet, ConfirmSheet } from '@/components/app/Sheet';
 import { useFeedback } from '@/components/app/Feedback';
-import { actions, useAppData } from '@/lib/store';
+import { actions, MODO_REMOTO, useAppData } from '@/lib/store';
+import { crearClienteNavegador } from '@/lib/supabase/navegador';
 import { MARCA } from '@/lib/marca';
 import { INVITACION_CONECTADA } from '@/lib/oferta';
 import { track } from '@/lib/analytics';
 import type { AppData, RemindHours } from '@/lib/types';
+
+const urlAcceso = () => `${window.location.origin}/entrar`;
 
 export default function FamiliaScreen() {
   const data = useAppData();
@@ -35,6 +38,20 @@ export default function FamiliaScreen() {
     } catch {
       notify('No pudimos descargarlos. Inténtalo de nuevo.');
     }
+  }
+  // Cerrar sesión de verdad: se cierra en Supabase y se recarga la página entera, para que ningún dato de esta
+  // familia quede en memoria si otra persona entra después desde el mismo navegador.
+  async function cerrarSesion() {
+    if (MODO_REMOTO) {
+      try {
+        await crearClienteNavegador()?.auth.signOut();
+      } catch {
+        // Aunque falle, se vuelve al acceso: la sesión caduca sola y /app la valida en el servidor.
+      }
+      window.location.assign(urlAcceso()); // navegación completa a propósito: limpia la memoria del navegador
+      return;
+    }
+    router.push('/entrar');
   }
   const params = useSearchParams();
   const [invitar, setInvitar] = useState(params.get('invitar') === '1');
@@ -226,26 +243,32 @@ export default function FamiliaScreen() {
           <LogOut size={20} aria-hidden="true" />
           Cerrar sesión
         </Btn>
-        <Btn variant="ghost" size="md" full onClick={() => setReset(true)}>
-          <RotateCcw size={18} aria-hidden="true" />
-          {data.demo ? 'Volver a mis datos' : 'Ver datos de ejemplo'}
-        </Btn>
-        <p className="t-body px-4 text-center text-[var(--text-secondary)]">
-          Plantilla de demostración: lo que registres se guarda solo en este dispositivo.
-        </p>
+        {!MODO_REMOTO && (
+          <>
+            <Btn variant="ghost" size="md" full onClick={() => setReset(true)}>
+              <RotateCcw size={18} aria-hidden="true" />
+              {data.demo ? 'Volver a mis datos' : 'Ver datos de ejemplo'}
+            </Btn>
+            <p className="t-body px-4 text-center text-[var(--text-secondary)]">
+              Plantilla de demostración: lo que registres se guarda solo en este dispositivo.
+            </p>
+          </>
+        )}
       </section>
 
       <Card as="section" className="flex flex-col gap-2 p-4" >
         <h2 className="t-sub text-[var(--text-primary)]">Tus datos</h2>
-        <p className="t-body text-[var(--text-secondary)]">Descarga una copia o borra tus datos.</p>
+        <p className="t-body text-[var(--text-secondary)]">{MODO_REMOTO ? 'Descarga una copia de tus datos.' : 'Descarga una copia o borra tus datos.'}</p>
         <Btn variant="secondary" size="md" full onClick={descargar}>
           <Download size={18} aria-hidden="true" />
           Descargar mis datos
         </Btn>
-        <Btn variant="ghost" size="md" full onClick={() => setBorrar(true)}>
-          <Trash2 size={18} aria-hidden="true" />
-          Borrar los datos de este dispositivo
-        </Btn>
+        {!MODO_REMOTO && (
+          <Btn variant="ghost" size="md" full onClick={() => setBorrar(true)}>
+            <Trash2 size={18} aria-hidden="true" />
+            Borrar los datos de este dispositivo
+          </Btn>
+        )}
         <nav aria-label="Información legal" className="t-label flex flex-wrap gap-x-4 text-[var(--text-secondary)]">
           {[
             ['/privacidad', 'Privacidad'],
@@ -295,10 +318,12 @@ export default function FamiliaScreen() {
         open={salir}
         onOpenChange={setSalir}
         title="¿Cerrar sesión?"
-        text="Volverás al acceso. Tus datos siguen en este dispositivo."
+        text={MODO_REMOTO ? 'Volverás al acceso. Tus datos quedan guardados en tu cuenta.' : 'Volverás al acceso. Tus datos siguen en este dispositivo.'}
         confirmLabel="Cerrar sesión"
         cancelLabel="Seguir aquí"
-        onConfirm={() => router.push('/entrar')}
+        onConfirm={() => {
+          void cerrarSesion();
+        }}
       />
     </div>
   );

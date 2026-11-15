@@ -1,6 +1,12 @@
-# Adaptador de datos: cómo cambiar el almacenamiento local por Supabase
+# Adaptador de datos: del almacenamiento local a Supabase
 
-Hoy todos los datos viven en el navegador (`lib/store.ts`, en `localStorage`). Para que los hermanos vean lo mismo desde sus teléfonos hay que cambiar **dónde se guardan**, no **las reglas**. Las reglas están en `lib/store.ts` y `lib/schedule.ts`, y se prueban sin navegador.
+> **Estado (ECU-5):** el adaptador para el **organizador** ya está escrito. Con `conexiones.supabase = true` en `lib/marca.ts`, `lib/store.ts` hidrata el círculo desde Supabase (`lib/datos/remoto.ts`, `lib/datos/mapeo.ts`) y guarda cada cambio de forma optimista en segundo plano. Sin esa bandera sigue la demostración local. Falta invitar hermanos (ECU-9) y que vean los cambios de los demás (ECU-10): hasta entonces `SINCRONIZACION_CONECTADA` e `INVITACION_CONECTADA` siguen en `false`.
+>
+> Qué hay que ejecutar: `supabase/schema.sql`, `retencion.sql`, `permisos-service-role.sql` y **`datos-reales.sql`**, en ese orden. El círculo se crea en `/bienvenida` y exige una suscripción vigente.
+>
+> Lo que el servidor impone y la pantalla no puede cambiar: una dosis la firma siempre quien tiene la sesión (`registrar_dosis` + trigger), el plan lo escribe solo el webhook de Hotmart, y los miembros los da de alta el servidor.
+
+Hasta ECU-5, todos los datos vivían en el navegador (`lib/store.ts`, en `localStorage`). Para que los hermanos vean lo mismo desde sus teléfonos hay que cambiar **dónde se guardan**, no **las reglas**. Las reglas están en `lib/store.ts` y `lib/schedule.ts`, y se prueban sin navegador.
 
 ## Lo que debe cumplir el nuevo almacenamiento
 
@@ -39,6 +45,10 @@ Lectura (hooks y funciones): `useAppData`, `useSeenBefore`, `useNow`, `useUiRead
 - **`supabase/sql.test.ts`** ya ejecuta `schema.sql` y `retencion.sql` en PostgreSQL real (PGlite), con las reglas de borrado y de retención.
 - **Prueba con dos cuentas**: una no debe ver los datos de la otra (RLS). Esto no se puede probar sin tu proyecto de Supabase.
 
-## Lo que todavía no hace esta plantilla
+## Lo que todavía no hace
 
-No hay un adaptador de Supabase escrito y conectado. Eso necesita tu proyecto, tus claves y la autenticación (`app/entrar/EntrarForm.tsx`). Este documento es el contrato que debe cumplir esa pieza.
+- Invitar hermanos y dar de alta miembros (ECU-9) y ver los cambios de los demás (ECU-10).
+- Borrar el círculo o la cuenta desde la app (derecho de supresión): `borrarTodo` no hace nada en modo remoto.
+- El historial de dosis que se carga es de los últimos 120 días (`DIAS_DE_DOSIS` en `lib/datos/remoto.ts`); lo anterior queda en la base.
+- Si alguien borra su cuenta, sus dosis y notas se conservan sin nombre propio y la pantalla dice «Alguien de la familia».
+- Borrar o deshacer algo que la base rechaza por permisos (suscripción vencida) no devuelve error: la API responde sin filas. La app lo corrige al recargar.

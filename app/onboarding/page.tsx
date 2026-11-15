@@ -31,7 +31,8 @@ import { track } from '@/lib/analytics';
 import { Circulo } from '@/components/brand/Circulo';
 import { PaywallScreen } from '@/components/onboarding/PaywallScreen';
 import { wizard, useHydrated, useWizard, type PreocupacionId } from '@/components/onboarding/wizardStore';
-import { actions } from '@/lib/store';
+import { actions, MODO_REMOTO } from '@/lib/store';
+import { guardarBorrador } from '@/lib/datos/borrador';
 import { fmtTime, parseTimeInput } from '@/lib/dates';
 import { GARANTIA_DIAS, TRIAL_DIAS, sincroTexto, tieneTrial } from '@/lib/oferta';
 
@@ -188,6 +189,15 @@ function Recorrido() {
         onEmpezarTrial={(planElegido) => {
           track('prueba_iniciada', { plan: planElegido });
           const med = medicamento.trim();
+          const hora = parseTimeInput(horario) ?? parseTimeInput(HORARIO_POR_DEFECTO) ?? '08:00';
+          if (MODO_REMOTO) {
+            // Con cuenta real el círculo se crea después, con sesión y compra activa (/bienvenida). Se guardan las
+            // respuestas en este navegador, solo hasta entonces.
+            guardarBorrador({ nombreFamiliar: nombre.trim(), parentesco: PARENTESCO[quien] ?? 'Familiar mayor', tuNombre: organizerName.trim(), medicina: med, hora });
+            wizard.discard();
+            router.push('/entrar?modo=crear');
+            return;
+          }
           actions.applyOnboarding({
             name: nombre.trim() || undefined,
             organizerName: organizerName.trim() || undefined,

@@ -1,0 +1,269 @@
+// Pruebas del store en MODO REMOTO (Supabase conectado): hidratación, acciones optimistas, cola de escrituras y
+// recarga tras un fallo. El acceso a Supabase (lib/datos/remoto.ts) se reemplaza por dobles; allí están sus propias pruebas.
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { data, med, note } from './test-utils';
+import type { AppData } from './types';
+import { SELF_ID } from './types';
+
+type Store = typeof import('./store');
+
+const U1 = '11111111-1111-4111-8111-111111111111';
+const MED = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const HOY = '2026-11-14';
+
+class FakeStorage {
+  map = new Map<string, string>();
+  getItem(k: string) {
+    return this.map.get(k) ?? null;
+  }
+  setItem(k: string, v: string) {
+    this.map.set(k, v);
+  }
+  removeItem(k: string) {
+    this.map.delete(k);
+  }
+}
+
+const ok = { ok: true } as const;
+let storage: FakeStorage;
+let cargar: ReturnType<typeof vi.fn>;
+let escribir: Record<string, ReturnType<typeof vi.fn>>;
+
+const delServidor = (over: Partial<AppData> = {}): AppData =>
+  data({ demo: false, currentUserId: U1, organizerName: 'Ana', members: [{ id: U1, name: 'Ana', role: 'Organizador', tone: 'accent' }], meds: [med({ id: MED, name: 'Losartán', giverId: null })], doses: [], appts: [], notes: [], hitos: [], ...over });
+
+async function abrir(): Promise<Store> {
+  vi.resetModules();
+  const real = await vi.importActual<typeof import('./marca')>('./marca');
+  vi.doMock('./marca', () => ({ ...real, MARCA: { ...real.MARCA, conexiones: { ...real.MARCA.conexiones, supabase: true } } }));
+  vi.doMock('./supabase/navegador', () => ({ crearClienteNavegador: () => ({ auth: { getUser: async () => ({ data: { user: { id: U1 } }, error: null }) } }) }));
+  escribir = new Proxy({} as Record<string, ReturnType<typeof vi.fn>>, {
+    get: (t, k: string) => (t[k] ??= vi.fn().mockResolvedValue(ok)),
+  });
+  vi.doMock('./datos/remoto', () => ({ cargarCirculo: cargar, escribir }));
+  return (await import('./store')) as Store;
+}
+
+/** Abre el store ya hidratado con los datos del «servidor». */
+async function conDatos(over: Partial<AppData> = {}) {
+  cargar.mockResolvedValue({ circleId: 'c1', datos: delServidor(over) });
+  const store = await abrir();
+  store.actions.reintentarCarga();
+  await vi.waitFor(() => expect(store.leerEstadoDatos()).toBe('listo'));
+  return store;
+}
+const vaciar = () => new Promise((r) => setTimeout(r, 0));
+
+beforeEach(() => {
+  storage = new FakeStorage();
+  vi.stubGlobal('window', { localStorage: storage, addEventListener: () => {} });
+  cargar = vi.fn();
+});
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.doUnmock('./marca');
+  vi.doUnmock('./supabase/navegador');
+  vi.doUnmock('./datos/remoto');
+});
+
+describe('modo remoto · arranque', () => {
+  it('antes de que lleguen los datos NO se ven datos de ejemplo', async () => {
+    const store = await abrir();
+    const d = store.getSnapshot();
+    expect(d.demo).toBe(false);
+    expect(d.profile.name).not.toBe('Rosa');
+    expect(d.meds).toEqual([]);
+    expect(store.MODO_REMOTO).toBe(true);
+    expect(store.leerEstadoDatos()).toBe('cargando');
+  });
+  it('hidrata desde el servidor y pasa a «listo»', async () => {
+    const store = await conDatos();
+    expect(store.getSnapshot()).toMatchObject({ demo: false, currentUserId: U1, organizerName: 'Ana' });
+    expect(store.getSnapshot().meds).toHaveLength(1);
+    expect(cargar).toHaveBeenCalledWith(expect.anything(), U1, { simpleMode: false });
+  });
+  it('si la carga falla queda en «error» y se puede reintentar', async () => {
+    cargar.mockRejectedValueOnce(new Error('red'));
+    const store = await abrir();
+    store.actions.reintentarCarga();
+    await vi.waitFor(() => expect(store.leerEstadoDatos()).toBe('error'));
+    cargar.mockResolvedValue({ circleId: 'c1', datos: delServidor() });
+    store.actions.reintentarCarga();
+    await vi.waitFor(() => expect(store.leerEstadoDatos()).toBe('listo'));
+  });
+  it('sin círculo todavía también es «error» (el guard de /app manda a /bienvenida antes)', async () => {
+    cargar.mockResolvedValue(null);
+    const store = await abrir();
+    store.actions.reintentarCarga();
+    await vi.waitFor(() => expect(store.leerEstadoDatos()).toBe('error'));
+  });
+  it('no guarda ningún dato de salud en localStorage', async () => {
+    const store = await conDatos();
+    store.actions.setQuestions('¿Subimos la dosis?');
+    store.actions.saveNote(note({ id: 'n1', authorId: U1 }));
+    await vaciar();
+    expect([...storage.map.keys()]).toEqual([]);
+  });
+});
+
+describe('modo remoto · dosis', () => {
+  const dosis = { medId: MED, date: HOY, time: '08:00' };
+  it('confirmar es optimista: se ve al instante y se envía al servidor en segundo plano', async () => {
+    const store = await conDatos();
+    let liberar!: (v: unknown) => void;
+    (escribir.registrarDosis as ReturnType<typeof vi.fn>).mockReturnValue(new Promise((r) => (liberar = r)));
+    expect(store.actions.confirmDose({ ...dosis, byId: U1, at: 5 })).toBe(true);
+    expect(store.getSnapshot().doses).toHaveLength(1); // ya está en pantalla, aunque el servidor no ha respondido
+    await vaciar();
+    expect(escribir.registrarDosis).toHaveBeenCalledWith(expect.objectContaining({ circleId: 'c1', userId: U1 }), { ...dosis, skipped: null, bySelf: false });
+    liberar(ok);
+    await vaciar();
+    expect(store.leerAvisoDatos()).toBeNull();
+  });
+  it('la dosis siempre la firma quien tiene la sesión, aunque se pida otra persona', async () => {
+    const store = await conDatos({ members: [{ id: U1, name: 'Ana', role: '', tone: 'accent' }, { id: 'otra', name: 'Bea', role: '', tone: 'green' }] });
+    store.actions.confirmDose({ ...dosis, byId: 'otra' });
+    expect(store.getSnapshot().doses[0].byId).toBe(U1);
+  });
+  it('el modo simple firma como el propio familiar', async () => {
+    const store = await conDatos();
+    store.actions.confirmDose({ ...dosis, byId: SELF_ID });
+    await vaciar();
+    expect(escribir.registrarDosis).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ bySelf: true }));
+  });
+  it('omitir envía el motivo; deshacer borra', async () => {
+    const store = await conDatos();
+    store.actions.skipDose({ ...dosis, byId: U1, reason: 'olvido' });
+    await vaciar();
+    expect(escribir.registrarDosis).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ skipped: 'olvido' }));
+    store.actions.undoDose(MED, HOY, '08:00');
+    await vaciar();
+    expect(escribir.deshacerDosis).toHaveBeenCalledWith(expect.anything(), dosis);
+    expect(store.getSnapshot().doses).toHaveLength(0);
+  });
+  it('lo inválido se rechaza igual que en modo local y no envía nada', async () => {
+    const store = await conDatos();
+    expect(store.actions.confirmDose({ medId: 'no-existe', date: HOY, time: '08:00', byId: U1 })).toBe(false);
+    expect(store.actions.confirmDose({ ...dosis, date: '14/11/2026', byId: U1 })).toBe(false);
+    expect(store.actions.skipDose({ ...dosis, byId: U1, reason: 'inventado' as never })).toBe(false);
+    expect(escribir.registrarDosis).not.toHaveBeenCalled();
+  });
+});
+
+describe('modo remoto · cola de escrituras', () => {
+  it('las escrituras salen una detrás de otra, en orden', async () => {
+    const store = await conDatos();
+    const orden: string[] = [];
+    let liberarPrimera!: (v: unknown) => void;
+    escribir.guardarMed.mockImplementationOnce(() => { orden.push('med:inicio'); return new Promise((r) => (liberarPrimera = (v) => { orden.push('med:fin'); r(v); })); });
+    escribir.guardarNota.mockImplementationOnce(async () => { orden.push('nota'); return ok; });
+    store.actions.saveMed(med({ id: MED, name: 'Losartán 100' }));
+    store.actions.saveNote(note({ id: 'n1', authorId: U1 }));
+    await vaciar();
+    expect(orden).toEqual(['med:inicio']); // la nota espera a que termine la medicina
+    liberarPrimera(ok);
+    await vi.waitFor(() => expect(orden).toEqual(['med:inicio', 'med:fin', 'nota']));
+  });
+  it('cada acción de datos llega al servidor con lo que cambió', async () => {
+    const store = await conDatos();
+    store.actions.saveMed(med({ id: MED, name: 'Losartán', times: ['09:00'] })); // cambia el horario: rige desde ahora
+    store.actions.toggleMedPause(MED);
+    store.actions.deleteMed(MED);
+    store.actions.saveAppt({ id: 'a1', title: 'Control', specialist: '', date: HOY, time: '10:00', place: '', attendeeId: null, remindDayBefore: true, remindHoursBefore: 0, status: 'pendiente', result: '' });
+    store.actions.setApptStatus('a1', 'atendida', 'Todo bien');
+    store.actions.saveNote(note({ id: 'n1', authorId: U1 }));
+    store.actions.deleteNote('n1');
+    store.actions.updateProfile({ name: 'Rosa', allergies: ['Penicilina'] });
+    store.actions.setQuestions('¿Y la dosis?');
+    store.actions.markSeen(1736337600000);
+    await vaciar();
+    await vi.waitFor(() => expect(escribir.actualizarVisita).toHaveBeenCalled());
+    expect(escribir.guardarMed.mock.calls[0][1]).toMatchObject({ id: MED, times: ['09:00'] });
+    expect(escribir.guardarMed.mock.calls[0][1].scheduleFrom).toBeGreaterThan(0);
+    expect(escribir.borrarMed).toHaveBeenCalledWith(expect.anything(), MED);
+    expect(escribir.guardarCita.mock.calls[1][1]).toMatchObject({ id: 'a1', status: 'atendida', result: 'Todo bien' });
+    expect(escribir.guardarNota).toHaveBeenCalledTimes(1);
+    expect(escribir.borrarNota).toHaveBeenCalledWith(expect.anything(), 'n1');
+    expect(escribir.actualizarPerfil.mock.calls[0][1]).toMatchObject({ name: 'Rosa', allergies: ['Penicilina'] });
+    expect(escribir.actualizarPreguntas).toHaveBeenCalledWith(expect.anything(), '¿Y la dosis?');
+    expect(escribir.actualizarVisita).toHaveBeenCalledWith(expect.anything(), 1736337600000);
+  });
+  it('un hito se guarda una sola vez', async () => {
+    const store = await conDatos();
+    store.actions.markHito('racha-7');
+    store.actions.markHito('racha-7');
+    await vaciar();
+    expect(escribir.actualizarHitos).toHaveBeenCalledTimes(1);
+    expect(escribir.actualizarHitos).toHaveBeenCalledWith(expect.anything(), ['racha-7']);
+  });
+  it('los recordatorios por defecto van al círculo; el modo simple se queda en este dispositivo', async () => {
+    const store = await conDatos();
+    store.actions.updateSettings({ simpleMode: true });
+    await vaciar();
+    expect(escribir.actualizarAjustes).not.toHaveBeenCalled();
+    expect(storage.map.get('entre-hermanos:simple')).toBe('1');
+    store.actions.updateSettings({ defaultRemindHours: 2 });
+    await vaciar();
+    expect(escribir.actualizarAjustes).toHaveBeenCalledWith(expect.anything(), { defaultRemindDayBefore: expect.any(Boolean), defaultRemindHours: 2 });
+  });
+});
+
+describe('modo remoto · cuando algo no se pudo guardar', () => {
+  it('un rechazo por permisos avisa con claridad y vuelve a leer del servidor', async () => {
+    const store = await conDatos();
+    escribir.registrarDosis.mockResolvedValue({ ok: false, codigo: 'permiso' });
+    cargar.mockResolvedValue({ circleId: 'c1', datos: delServidor({ doses: [] }) }); // la verdad del servidor: sin la dosis
+    store.actions.confirmDose({ medId: MED, date: HOY, time: '08:00', byId: U1 });
+    expect(store.getSnapshot().doses).toHaveLength(1);
+    await vi.waitFor(() => expect(store.leerAvisoDatos()).toContain('solo lectura'));
+    await vi.waitFor(() => expect(cargar).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(store.getSnapshot().doses).toHaveLength(0)); // se recuperó la verdad
+    expect(store.leerEstadoDatos()).toBe('listo'); // sin volver a «cargando»
+  });
+  it('un fallo de red o una excepción también avisan, con otro texto', async () => {
+    const store = await conDatos();
+    escribir.guardarNota.mockRejectedValue(new Error('red caída con datos de la familia'));
+    store.actions.saveNote(note({ id: 'n1', authorId: U1 }));
+    await vi.waitFor(() => expect(store.leerAvisoDatos()).toContain('conexión'));
+    expect(store.leerAvisoDatos()).not.toContain('familia');
+  });
+  it('si la recarga también falla, se conservan los datos que ya había en pantalla', async () => {
+    const store = await conDatos();
+    escribir.guardarMed.mockResolvedValue({ ok: false, codigo: 'otro' });
+    cargar.mockRejectedValue(new Error('sin red'));
+    store.actions.saveMed(med({ id: MED, name: 'Losartán 100' }));
+    await vi.waitFor(() => expect(store.leerAvisoDatos()).not.toBeNull());
+    await vaciar();
+    expect(store.getSnapshot().meds).toHaveLength(1);
+    expect(store.leerEstadoDatos()).toBe('listo');
+  });
+  it('el aviso se puede cerrar', async () => {
+    const store = await conDatos();
+    escribir.guardarNota.mockResolvedValue({ ok: false, codigo: 'otro' });
+    store.actions.saveNote(note({ id: 'n1', authorId: U1 }));
+    await vi.waitFor(() => expect(store.leerAvisoDatos()).not.toBeNull());
+    store.actions.descartarAviso();
+    expect(store.leerAvisoDatos()).toBeNull();
+  });
+});
+
+describe('modo remoto · lo que ya no aplica', () => {
+  it('el plan, la demostración, el borrado local y el código de invitación no hacen nada', async () => {
+    const store = await conDatos();
+    const antes = JSON.stringify(store.getSnapshot());
+    store.actions.setPlan({ estado: 'pago_pendiente' });
+    store.actions.resetDemo();
+    store.actions.borrarTodo();
+    store.actions.ensureCodigoCirculo();
+    expect(store.actions.enterDemo()).toBe('storage-unavailable');
+    expect(store.actions.restorePersonalData()).toBe('missing');
+    expect(store.actions.applyOnboarding({ name: 'Otra' })).toBe('preserved');
+    expect(JSON.stringify(store.getSnapshot())).toBe(antes);
+    await vaciar();
+    expect(Object.values(escribir).every((f) => f.mock.calls.length === 0)).toBe(true);
+  });
+  it('exportar los datos funciona con los datos reales cargados', async () => {
+    const store = await conDatos();
+    expect(JSON.parse(store.actions.exportarDatos()).datos.organizerName).toBe('Ana');
+  });
+});
