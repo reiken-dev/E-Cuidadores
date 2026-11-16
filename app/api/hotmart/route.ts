@@ -23,18 +23,14 @@ export const runtime = 'nodejs';
 
 type Db = SupabaseClient;
 
-/** Busca el usuario por correo recorriendo TODAS las páginas de la API de administración (no solo la primera).
+/** Busca el usuario por correo con UNA consulta a la función SQL `usuario_por_correo` (supabase/vigencia-y-correo.sql, ECU-8).
  *  Solo cuenta una cuenta con el correo CONFIRMADO: una cuenta sin confirmar pudo crearla cualquiera con un correo ajeno.
  *  Sin cuenta confirmada, la compra queda en pending_purchases y se enlaza cuando la persona confirme (ver schema.sql).
- *  Vale para un volumen pequeño de usuarios; si crece, conviene una función SQL que busque por correo (migración nueva). */
+ *  Si la función no existe aún (falta ejecutar el SQL) o falla, devuelve 'error' → 5xx y Hotmart reintenta: nunca se pierde un aviso. */
 async function usuarioPorCorreo(db: Db, correo: string): Promise<{ id: string } | null | 'error'> {
-  for (let pagina = 1; ; pagina++) {
-    const { data, error } = await db.auth.admin.listUsers({ page: pagina, perPage: 1000 });
-    if (error || !data) return 'error';
-    const hallado = data.users.find((x) => x.email?.toLowerCase() === correo && x.email_confirmed_at);
-    if (hallado) return { id: hallado.id };
-    if (data.users.length < 1000) return null; // última página
-  }
+  const { data, error } = await db.rpc('usuario_por_correo', { p_email: correo });
+  if (error) return 'error';
+  return typeof data === 'string' && data ? { id: data } : null;
 }
 
 export async function POST(req: Request) {

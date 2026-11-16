@@ -316,7 +316,7 @@ describe('libro de ingresos y enlace de compras', () => {
       db.exec(`insert into public.payment_events(hotmart_transaction,event,buyer_email,payload) values ('T10','PURCHASE_COMPLETE','a@x.com','{}')`)
     ).rejects.toThrow();
   }, 60000);
-  it('quién conserva el acceso según el estado: activa, en gracia y cancelada con lo ya pagado sí; vencida, reembolso y contracargo no', async () => {
+  it('quién conserva el acceso según el estado: activa, en gracia y cancelada con lo ya pagado sí; vencida, reembolso y contracargo no (schema.sql base)', async () => {
     const { db, u } = await base();
     const vigente = async (status: string, finPeriodo: string | null) => {
       await db.exec(`update public.subscriptions set status='${status}', current_period_end=${finPeriodo ? `'${finPeriodo}'::timestamptz` : 'null'} where user_id='${u}'`);
@@ -326,7 +326,7 @@ describe('libro de ingresos y enlace de compras', () => {
     const pasado = new Date(Date.now() - 10 * 864e5).toISOString();
     expect(await vigente('trial', null)).toBe(true);
     expect(await vigente('active', futuro)).toBe(true);
-    expect(await vigente('past_due', pasado)).toBe(true);
+    expect(await vigente('past_due', pasado)).toBe(true); // schema.sql base: sin fecha de vencimiento (ECU-8 lo corrige en vigencia-y-correo.sql)
     expect(await vigente('canceled', futuro)).toBe(true); // cancelada: conserva lo ya pagado
     expect(await vigente('canceled', pasado)).toBe(false);
     expect(await vigente('canceled', null)).toBe(false); // sin fecha de fin no se asume acceso
@@ -652,3 +652,93 @@ describe('invitaciones (invitaciones.sql)', () => {
     await como(db, 'service_role', null, async () => expect((await db.query(unir(X))).rows[0]).toEqual({ r: 'ok' }));
   }, 60000);
 });
+
+describe('vigencia por fecha y búsqueda por correo (vigencia-y-correo.sql, ECU-8)', () => {
+  async function conVigencia() {
+    const t = await dosCuentas();
+    await t.db.exec(leer('datos-reales.sql'));
+    await t.db.exec(leer('vigencia-y-correo.sql'));
+    return t;
+  }
+  const dias = (n: number) => `now() + interval '${n} days'`;
+  /** ¿Es vigente la suscripción de `u` con este estado, plan, fecha de fin y última actualización (días desde hoy)? */
+  async function vigente(db: PGlite, u: string, status: string, plan: string, fin: number | null, actualizada = -1) {
+    await db.exec(
+      `update public.subscriptions set status='${status}', plan='${plan}', current_period_end=${fin === null ? 'null' : dias(fin)}, updated_at=${dias(actualizada)} where user_id='${u}'`
+    );
+    return (await db.query<{ v: boolean }>(`select public.suscripcion_vigente('${u}') as v`)).rows[0].v;
+  }
+
+  it('se ejecuta sin errores y dos veces seguidas (idempotente)', async () => {
+    const { db } = await conVigencia();
+    await expect(db.exec(leer('vigencia-y-correo.sql'))).resolves.not.toThrow();
+  }, 60000);
+
+  it('activa o con cobro fallido: vigente hasta la fecha de fin + 7 días de gracia', async () => {
+    const { db, A } = await conVigencia();
+    for (const status of ['active', 'past_due']) {
+      expect(await vigente(db, A, status, 'mensual', 10)).toBe(true);
+      expect(await vigente(db, A, status, 'mensual', -6)).toBe(true); // dentro de la gracia
+      expect(await vigente(db, A, status, 'mensual', -8)).toBe(false); // fuera de la gracia
+    }
+  }, 60000);
+
+  it('sin fecha de fin: respaldo por plan (mensual y desconocido 31 días, anual 366) + gracia; nunca permanente', async () => {
+    const { db, A } = await conVigencia();
+    expect(await vigente(db, A, 'active', 'mensual', null, -30)).toBe(true);
+    expect(await vigente(db, A, 'active', 'mensual', null, -38)).toBe(false);
+    expect(await vigente(db, A, 'active', 'desconocido', null, -38)).toBe(false);
+    expect(await vigente(db, A, 'past_due', 'mensual', null, -38)).toBe(false);
+    expect(await vigente(db, A, 'active', 'anual', null, -300)).toBe(true);
+    expect(await vigente(db, A, 'active', 'anual', null, -380)).toBe(false);
+  }, 60000);
+
+  it('trial, canceled y los demás estados se comportan como se documentó', async () => {
+    const { db, A } = await conVigencia();
+    expect(await vigente(db, A, 'trial', 'mensual', null, -400)).toBe(true); // trial: sin cambio, sin fecha
+    expect(await vigente(db, A, 'canceled', 'mensual', 3)).toBe(true);
+    expect(await vigente(db, A, 'canceled', 'mensual', -1)).toBe(false); // cancelada: sin gracia
+    expect(await vigente(db, A, 'canceled', 'mensual', null)).toBe(false);
+    for (const status of ['expired', 'refunded', 'chargeback']) expect(await vigente(db, A, status, 'mensual', 30)).toBe(false);
+  }, 60000);
+
+  it('con la suscripción vencida el círculo queda de solo lectura (RLS) y vuelve a escribir al renovar', async () => {
+    const { db, A, B } = await conVigencia();
+    const nuevaMed = `insert into public.meds(circle_id,name,times,freq) values ('${C}','Nueva','{09:00}','{"kind":"daily"}')`;
+    expect(await vigente(db, A, 'active', 'mensual', -30)).toBe(false);
+    for (const quien of [A, B]) await como(db, 'authenticated', quien, async () => expect(db.query(nuevaMed)).rejects.toThrow());
+    await como(db, 'authenticated', B, async () => expect((await db.query(`select 1 from public.meds`)).rows.length).toBeGreaterThan(0)); // leer sigue
+    expect(await vigente(db, A, 'active', 'mensual', 20)).toBe(true);
+    await como(db, 'authenticated', B, async () => expect(db.query(nuevaMed)).resolves.toBeDefined());
+  }, 60000);
+
+  it('suscripcion_vigente sigue sin poder llamarla el navegador', async () => {
+    const { db, A, B } = await conVigencia();
+    for (const rol of ['anon', 'authenticated'] as const) {
+      await como(db, rol, B, async () => expect(db.query(`select public.suscripcion_vigente('${A}')`)).rejects.toThrow());
+    }
+  }, 60000);
+
+  it('usuario_por_correo: solo correos CONFIRMADOS, sin distinguir mayúsculas ni espacios', async () => {
+    const { db, A } = await conVigencia();
+    const buscar = async (correo: string | null) =>
+      (await db.query<{ id: string | null }>(`select public.usuario_por_correo(${correo === null ? 'null' : `'${correo}'`}) as id`)).rows[0].id;
+    expect(await buscar('a@x.com')).toBe(A);
+    expect(await buscar('  A@X.COM ')).toBe(A);
+    expect(await buscar('nadie@x.com')).toBeNull();
+    expect(await buscar('')).toBeNull();
+    expect(await buscar(null)).toBeNull();
+    const sin = (await db.query<{ id: string }>(`insert into auth.users(email) values ('sinconfirmar@x.com') returning id`)).rows[0].id;
+    expect(sin).toBeTruthy();
+    expect(await buscar('sinconfirmar@x.com')).toBeNull();
+  }, 60000);
+
+  it('usuario_por_correo solo la ejecuta service_role', async () => {
+    const { db, A } = await conVigencia();
+    for (const rol of ['anon', 'authenticated'] as const) {
+      await como(db, rol, A, async () => expect(db.query(`select public.usuario_por_correo('a@x.com')`)).rejects.toThrow());
+    }
+    await como(db, 'service_role', null, async () => expect((await db.query<{ id: string }>(`select public.usuario_por_correo('a@x.com') as id`)).rows[0].id).toBe(A));
+  }, 60000);
+});
+

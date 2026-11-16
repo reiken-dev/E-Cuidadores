@@ -46,17 +46,16 @@ const { cfg, llamadas, createClient, reiniciar } = vi.hoisted(() => {
           },
         }),
       }),
-      auth: {
-        admin: {
-          listUsers: async ({ page, perPage }: { page: number; perPage: number }) => {
-            llamadas.push({ op: 'listar-usuarios', pagina: page });
-            if (cfg.errListado) return { data: null, error: cfg.errListado };
-            const lista = cfg.listados[Math.min(nListados, cfg.listados.length - 1)];
-            if (page === 1) nListados++;
-            return { data: { users: lista.slice((page - 1) * perPage, page * perPage) }, error: null };
-          },
-        },
+      // usuario_por_correo (supabase/vigencia-y-correo.sql): devuelve el id de la cuenta con ese correo CONFIRMADO, o null.
+      rpc: async (nombre: string, args: { p_email: string }) => {
+        llamadas.push({ op: 'rpc', tabla: nombre, valor: args.p_email });
+        if (cfg.errListado) return { data: null, error: cfg.errListado };
+        const lista = cfg.listados[Math.min(nListados, cfg.listados.length - 1)];
+        nListados++;
+        const f = lista.find((x) => x.email.toLowerCase() === args.p_email.trim().toLowerCase() && x.email_confirmed_at);
+        return { data: f ? f.id : null, error: null };
       },
+      auth: { admin: { listUsers: async () => { throw new Error('el webhook ya no recorre todos los usuarios'); } } },
     };
   });
   return { cfg, llamadas, createClient, reiniciar };
@@ -223,7 +222,7 @@ describe('POST /api/hotmart · fallos: 500 para que Hotmart reintente', () => {
     expect((await enviar(aviso('PURCHASE_APPROVED'))).status).toBe(500);
     expect(escrituras()).toEqual([]);
   });
-  it('falla el listado de usuarios', async () => {
+  it('falla la búsqueda del usuario por correo', async () => {
     cfg.errListado = { message: 'x' };
     expect((await enviar(aviso('PURCHASE_APPROVED'))).status).toBe(500);
     expect(escrituras()).toEqual([]);
@@ -261,11 +260,11 @@ describe('POST /api/hotmart · compras, cancelaciones y reembolsos', () => {
       current_period_end: new Date(Date.UTC(2027, 0, 15)).toISOString(),
     });
   });
-  it('encuentra a la persona aunque esté en la segunda página de usuarios', async () => {
-    const otros = Array.from({ length: 1000 }, (_, i) => ({ id: `x${i}`, email: `otro${i}@ejemplo.com`, email_confirmed_at: '2026-01-01T00:00:00Z' }));
+  it('busca a la persona con UNA consulta por correo (usuario_por_correo), sin recorrer todos los usuarios, aunque haya miles', async () => {
+    const otros = Array.from({ length: 5000 }, (_, i) => ({ id: `x${i}`, email: `otro${i}@ejemplo.com`, email_confirmed_at: '2026-01-01T00:00:00Z' }));
     cfg.listados = [[...otros, confirmado]];
     await enviar(aviso('PURCHASE_APPROVED'));
-    expect(llamadas.filter((l) => l.op === 'listar-usuarios').map((l) => l.pagina)).toEqual([1, 2]);
+    expect(llamadas.filter((l) => l.op === 'rpc')).toEqual([{ op: 'rpc', tabla: 'usuario_por_correo', valor: CORREO }]);
     expect(estadoEscrito()?.fila).toMatchObject({ user_id: 'u1' });
   });
   it('sin cuenta, la compra queda pendiente por correo y se enlaza al confirmar', async () => {

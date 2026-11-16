@@ -182,6 +182,19 @@ export function notaDeFila(r: FilaNota): Note {
   };
 }
 
+/** Días de gracia después del fin del periodo para una suscripción activa o con cobro fallido (supabase/vigencia-y-correo.sql). */
+export const GRACIA_DIAS = 7;
+/** Si Hotmart no manda la fecha de fin: última actualización + este periodo según el plan. Igual que la base. */
+export const PERIODO_DE_RESPALDO_DIAS = { mensual: 31, anual: 366, desconocido: 31 } as const;
+const DIA_MS = 864e5;
+
+/** Hasta cuándo (ms) conserva el acceso una suscripción activa o con cobro fallido, gracia incluida. */
+function accesoHasta(s: FilaSuscripcion): number {
+  const fin = isoAMs(s.current_period_end ?? null);
+  const dias = s.plan === 'anual' ? PERIODO_DE_RESPALDO_DIAS.anual : PERIODO_DE_RESPALDO_DIAS.mensual;
+  return (fin ?? (isoAMs(s.updated_at) ?? 0) + dias * DIA_MS) + GRACIA_DIAS * DIA_MS;
+}
+
 /**
  * Lo único que la pantalla del plan necesita saber. La suscripción la escribe solo el servidor (webhook de Hotmart).
  * RLS solo deja leer la fila PROPIA: quien no tiene una (un hermano invitado, que no paga) no ve un aviso de cobro que
@@ -190,14 +203,19 @@ export function notaDeFila(r: FilaNota): Note {
 export function planDeSuscripcion(s: FilaSuscripcion | null, ahora: number = Date.now()): Plan {
   if (!s) return { estado: 'activo', tipo: 'mensual', desde: 0 };
   const base = { tipo: s.plan === 'anual' ? ('anual' as const) : ('mensual' as const), desde: isoAMs(s.updated_at) ?? 0 };
-  if (s.status === 'trial' || s.status === 'active') return { ...base, estado: 'activo' };
+  // trial: sin cambio (vigente sin fecha); hoy ningún aviso del webhook lo asigna.
+  if (s.status === 'trial') return { ...base, estado: 'activo' };
+  // Activa o con cobro fallido: vigente hasta la fecha de fin (o la de respaldo por plan) + gracia. Igual que la base.
+  if (s.status === 'active' || s.status === 'past_due') {
+    if (accesoHasta(s) > ahora) return s.status === 'active' ? { ...base, estado: 'activo' } : { ...base, estado: 'pago_pendiente', motivo: 'cobro' };
+    return { ...base, estado: 'pago_pendiente', motivo: 'inactiva' };
+  }
   // Mismo criterio que la base (suscripcion_vigente): una cancelada conserva el acceso solo hasta el fin de lo ya pagado.
   if (s.status === 'canceled') {
     const fin = isoAMs(s.current_period_end ?? null);
     return fin !== null && fin > ahora ? { ...base, estado: 'activo' } : { ...base, estado: 'pago_pendiente', motivo: 'inactiva' };
   }
-  // No se pudo cobrar: la base conserva el acceso (en gracia). Vencida, reembolsada o con contracargo: ya no hay acceso.
-  if (s.status === 'past_due') return { ...base, estado: 'pago_pendiente', motivo: 'cobro' };
+  // Vencida, reembolsada o con contracargo: ya no hay acceso.
   return { ...base, estado: 'pago_pendiente', motivo: 'inactiva' };
 }
 

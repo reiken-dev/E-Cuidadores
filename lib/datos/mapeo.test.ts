@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { armarDatos, citaAFila, citaDeFila, dosisDeFila, esUuid, isoAMs, medAFila, medDeFila, miembroDeFila, msAIso, notaAFila, notaDeFila, perfilAColumnas, perfilDeFila, planDeSuscripcion, tonoDe } from './mapeo';
+import { GRACIA_DIAS, PERIODO_DE_RESPALDO_DIAS, armarDatos, citaAFila, citaDeFila, dosisDeFila, esUuid, isoAMs, medAFila, medDeFila, miembroDeFila, msAIso, notaAFila, notaDeFila, perfilAColumnas, perfilDeFila, planDeSuscripcion, tonoDe } from './mapeo';
 import type { FilaCirculo, FilaMed } from './mapeo';
 import { doseKey } from '../schedule';
 import { SELF_ID } from '../types';
@@ -140,19 +140,40 @@ describe('citas y notas', () => {
 
 describe('plan', () => {
   const AHORA = Date.parse('2026-11-14T12:00:00.000Z');
-  const futuro = msAIso(AHORA + 864e5);
-  const pasado = msAIso(AHORA - 864e5);
-  it('trial y activa se muestran como activas', () => {
-    for (const status of ['trial', 'active']) expect(planDeSuscripcion({ status, plan: 'anual', updated_at: msAIso(7) }, AHORA)).toEqual({ estado: 'activo', tipo: 'anual', desde: 7 });
+  const DIA = 864e5;
+  const hace = (d: number) => msAIso(AHORA - d * DIA);
+  const en = (d: number) => msAIso(AHORA + d * DIA);
+  const actualizada = hace(2);
+  const plan = (status: string, tipo: string, fin?: string | null, upd = actualizada) =>
+    planDeSuscripcion({ status, plan: tipo, updated_at: upd, current_period_end: fin }, AHORA);
+
+  it('trial se muestra como activo sin fecha (sin cambio; hoy nada lo asigna)', () => {
+    expect(plan('trial', 'anual')).toEqual({ estado: 'activo', tipo: 'anual', desde: Date.parse(actualizada) });
   });
-  it('una cancelada solo está al día hasta el fin de lo ya pagado (como la base); sin fecha, no', () => {
-    expect(planDeSuscripcion({ status: 'canceled', plan: 'mensual', updated_at: msAIso(7), current_period_end: futuro }, AHORA).estado).toBe('activo');
-    expect(planDeSuscripcion({ status: 'canceled', plan: 'mensual', updated_at: msAIso(7), current_period_end: pasado }, AHORA)).toMatchObject({ estado: 'pago_pendiente', motivo: 'inactiva' });
-    expect(planDeSuscripcion({ status: 'canceled', plan: 'mensual', updated_at: msAIso(7) }, AHORA)).toMatchObject({ estado: 'pago_pendiente', motivo: 'inactiva' });
+  it('activa: al día hasta la fecha de fin + 7 días de gracia; después, «inactiva» (como la base)', () => {
+    expect(GRACIA_DIAS).toBe(7);
+    expect(plan('active', 'mensual', en(10)).estado).toBe('activo');
+    expect(plan('active', 'mensual', hace(6)).estado).toBe('activo'); // dentro de la gracia
+    expect(plan('active', 'mensual', hace(8))).toMatchObject({ estado: 'pago_pendiente', motivo: 'inactiva' });
   });
-  it('no se pudo cobrar (past_due) conserva el acceso: motivo «cobro»; vencida, reembolso y contracargo: «inactiva»', () => {
-    expect(planDeSuscripcion({ status: 'past_due', plan: 'mensual', updated_at: msAIso(7) }, AHORA)).toMatchObject({ estado: 'pago_pendiente', motivo: 'cobro' });
-    for (const status of ['expired', 'refunded', 'chargeback']) expect(planDeSuscripcion({ status, plan: 'mensual', updated_at: msAIso(7) }, AHORA)).toMatchObject({ estado: 'pago_pendiente', motivo: 'inactiva' });
+  it('activa sin fecha de fin: usa la de respaldo por plan + gracia (nunca acceso permanente)', () => {
+    expect(PERIODO_DE_RESPALDO_DIAS).toEqual({ mensual: 31, anual: 366, desconocido: 31 });
+    expect(plan('active', 'mensual', null, hace(30)).estado).toBe('activo');
+    expect(plan('active', 'mensual', null, hace(38))).toMatchObject({ estado: 'pago_pendiente', motivo: 'inactiva' });
+    expect(plan('active', 'desconocido', null, hace(38))).toMatchObject({ estado: 'pago_pendiente', motivo: 'inactiva' });
+    expect(plan('active', 'anual', null, hace(300)).estado).toBe('activo');
+    expect(plan('active', 'anual', null, hace(380))).toMatchObject({ estado: 'pago_pendiente', motivo: 'inactiva' });
+  });
+  it('una cancelada solo está al día hasta el fin de lo ya pagado, sin gracia; sin fecha, no', () => {
+    expect(plan('canceled', 'mensual', en(1)).estado).toBe('activo');
+    expect(plan('canceled', 'mensual', hace(1))).toMatchObject({ estado: 'pago_pendiente', motivo: 'inactiva' });
+    expect(plan('canceled', 'mensual')).toMatchObject({ estado: 'pago_pendiente', motivo: 'inactiva' });
+  });
+  it('no se pudo cobrar (past_due): «cobro» dentro de la gracia; pasada la ventana, «inactiva»; vencida, reembolso y contracargo: «inactiva»', () => {
+    expect(plan('past_due', 'mensual', hace(3))).toMatchObject({ estado: 'pago_pendiente', motivo: 'cobro' });
+    expect(plan('past_due', 'mensual', null)).toMatchObject({ estado: 'pago_pendiente', motivo: 'cobro' });
+    expect(plan('past_due', 'mensual', hace(9))).toMatchObject({ estado: 'pago_pendiente', motivo: 'inactiva' });
+    for (const status of ['expired', 'refunded', 'chargeback']) expect(plan(status, 'mensual', en(30))).toMatchObject({ estado: 'pago_pendiente', motivo: 'inactiva' });
   });
   it('sin fila de suscripción propia (p. ej. un hermano que no paga) no se muestra un aviso de cobro ajeno', () => {
     expect(planDeSuscripcion(null).estado).toBe('activo');
