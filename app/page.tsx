@@ -17,7 +17,7 @@ import { Garantia } from '@/components/landing/Garantia';
 import { Faq } from '@/components/landing/Faq';
 import { CtaFinal } from '@/components/landing/CtaFinal';
 import { FooterLegal } from '@/components/landing/FooterLegal';
-import { correoTexto, datosTexto, OFERTA_ES_EJEMPLO, sincroTexto, GARANTIA_DIAS, PRECIO_ANIO, PRECIO_ANIO_POR_MES, PRECIO_MES, TRIAL_DIAS, tieneTrial, textoMesesGratis, usd } from '@/lib/oferta';
+import { datosTexto, OFERTA_ES_EJEMPLO, sincroTexto, GARANTIA_DIAS, PRECIO_ANIO, PRECIO_ANIO_POR_MES, PRECIO_MES, TRIAL_DIAS, tieneTrial, textoMesesGratis, usd } from '@/lib/oferta';
 import { StickyCtaMobile, StickyMiniHeader } from '@/components/landing/sticky';
 import { RevealObserver } from '@/components/landing/reveal';
 import { PruebaSocial } from '@/components/landing/PruebaSocial';
@@ -174,7 +174,7 @@ export default function LandingPage() {
           features: [
             'Todos los hermanos, en un mismo círculo',
             'Dosis con nombre y hora, siempre a la vista',
-            correoTexto('Citas con responsable y avisos programados', 'Citas con responsable y fecha a la vista'),
+            'Citas con responsable y fecha a la vista',
             'Resumen de una página para cada consulta',
             'Modo simple para tu familiar mayor',
           ],
@@ -188,7 +188,7 @@ export default function LandingPage() {
           features: [
             'Todos los hermanos, en un mismo círculo',
             'Dosis con nombre y hora, siempre a la vista',
-            correoTexto('Citas con responsable y avisos programados', 'Citas con responsable y fecha a la vista'),
+            'Citas con responsable y fecha a la vista',
             'Resumen de una página para cada consulta',
             'Modo simple para tu familiar mayor',
           ],

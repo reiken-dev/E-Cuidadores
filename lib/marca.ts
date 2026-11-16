@@ -26,7 +26,7 @@ export const MARCA = {
    * `npm run verificar` FALLA mientras supabase o hotmart estén en false (la app vende y tiene acceso protegido).
    * resend: en false, la app no envía correos y las pantallas no dicen que los envía.
    */
-  conexiones: { supabase: false, hotmart: false, resend: false } as Conexiones,
+  conexiones: { supabase: false, hotmart: false, resend: true } as Conexiones,
 } as const;
 
 export interface Conexiones {
