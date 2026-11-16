@@ -7,6 +7,7 @@
 // 500 = algo falló aquí (Hotmart reintenta; por eso el aviso solo se anota como procesado tras éxito).
 // Privacidad: no se escribe nada en logs (ni cuerpo, ni correo, ni errores) y el payload guardado solo lleva el producto.
 import { NextResponse } from 'next/server';
+import { enviarCorreo } from '@/lib/enviar-correo';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import {
   debeAplicarEstado,
@@ -86,7 +87,9 @@ export async function POST(req: Request) {
 
     // 5. Primero el estado, salvo que el aviso no corresponda (llegó fuera de orden o es de un pedido que no se pagó).
     //    Si la persona aún no tiene cuenta confirmada, queda en pending_purchases y se enlaza al confirmar su correo.
-    if (debeAplicarEstado(aviso.evento, eventosPrevios)) {
+    const aplicar = debeAplicarEstado(aviso.evento, eventosPrevios);
+    let tieneCuenta = false; // los correos de cobro y cancelación solo tienen sentido para quien ya tiene cuenta
+    if (aplicar) {
       // Solo se escriben los campos que llegaron: un aviso sin fecha ni nombre de plan no borra lo que ya guardamos.
       // El plan solo se escribe si Hotmart lo dice; al crear la fila, la base lo deja en "desconocido" (ver schema.sql).
       const datos = {
@@ -103,6 +106,7 @@ export async function POST(req: Request) {
       if (u) {
         const { error } = await aSuscripcion(u.id);
         if (error) return reintentar();
+        tieneCuenta = true;
       } else {
         const { error } = await db.from('pending_purchases').upsert({ buyer_email: aviso.correo, ...datos }, { onConflict: 'buyer_email' });
         if (error) return reintentar();
@@ -115,6 +119,7 @@ export async function POST(req: Request) {
           if (errSub) return reintentar();
           const { error: errBorrar } = await db.from('pending_purchases').delete().eq('buyer_email', aviso.correo);
           if (errBorrar) return reintentar();
+          tieneCuenta = true;
         }
       }
     }
@@ -132,7 +137,21 @@ export async function POST(req: Request) {
     if (errAviso?.code === '23505') return NextResponse.json({ ok: true, repetido: true });
     if (errAviso) return reintentar();
 
-    // 7. Correos (cobro fallido, cancelación): se enviarán desde aquí al conectar Resend (ECU-4). Hoy no se envía nada.
+    // 7. Correos del servicio (cobro fallido, cancelación). El aviso ya está guardado: un fallo del correo no cambia la
+    //    respuesta (si fuera 5xx, Hotmart reintentaría, el aviso saldría como repetido y el correo tampoco saldría).
+    //    Solo si el aviso cambió el estado, y sin datos de salud: la plantilla no lleva nombres de la familia.
+    //    PURCHASE_CANCELED (compra cancelada, reembolso o contracargo) no manda «cancelación»: la baja voluntaria es SUBSCRIPTION_CANCELLATION.
+    //    Si el correo no sale (Resend caído) no hay segundo intento: Hotmart no reenvía un aviso ya guardado.
+    if (aplicar && tieneCuenta) {
+      const correo = aviso.evento === 'PURCHASE_DELAYED' ? 'pago_fallido' : aviso.evento === 'SUBSCRIPTION_CANCELLATION' ? 'cancelacion' : null;
+      if (correo) {
+        try {
+          await enviarCorreo(correo, aviso.correo);
+        } catch {
+          // enviarCorreo no lanza, pero si algún día lo hiciera el aviso ya está guardado: no se convierte en 5xx.
+        }
+      }
+    }
     return NextResponse.json({ ok: true });
   } catch {
     // Cualquier fallo inesperado: 500 para que Hotmart reintente. Sin log: el error podría traer datos del comprador.

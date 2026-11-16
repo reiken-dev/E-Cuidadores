@@ -6,6 +6,7 @@ import { Marco } from '@/app/entrar/EntrarForm';
 import { crearClienteNavegador } from '@/lib/supabase/navegador';
 import { crearCirculo } from '@/lib/datos/remoto';
 import { borrarBorrador, leerBorrador } from '@/lib/datos/borrador';
+import { enviarBienvenida } from './actions';
 
 const CAMPO =
   'h-14 w-full rounded-[var(--radius-button)] border border-[color-mix(in_oklab,var(--text-tertiary)_30%,transparent)] bg-[var(--surface)] px-5 text-[16px] text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] outline-none transition-colors focus:border-[var(--accent)]';
@@ -57,6 +58,7 @@ export default function BienvenidaForm() {
       });
       if (!r.ok) return setError(r.codigo === 'sin-suscripcion' ? SIN_SUSCRIPCION : ERROR_GENERAL);
       borrarBorrador();
+      void enviarBienvenida().catch(() => {}); // mejor esfuerzo: si el correo no sale, no se avisa ni se bloquea nada
       creado = true; // el botón sigue bloqueado hasta que la página cambie: no se puede crear un segundo círculo
       router.push('/app');
     } catch {

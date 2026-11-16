@@ -1,0 +1,9 @@
+<!-- Plantilla de correo de Supabase Auth (ECU-4). Cámbiale "E-Cuidadores" por el nombre de tu marca.
+     Pégala en Supabase > Authentication > Emails. Sin datos de salud: este correo solo lleva el enlace de acceso. -->
+<div style="font-family:Arial,Helvetica,sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#0E1B33;font-size:16px;line-height:1.5">
+  <h1 style="font-size:24px;line-height:1.2;margin:0 0 16px">Confirma tu nuevo correo</h1>
+  <p style="margin:0 0 16px">Pediste cambiar el correo de tu cuenta de E-Cuidadores a {{ .NewEmail }}.</p><p style="margin:0 0 16px">Confirma el cambio con este enlace.</p>
+  <p style="margin:24px 0"><a href="{{ .ConfirmationURL }}" style="background:#1F5BD6;color:#ffffff;padding:14px 24px;border-radius:999px;text-decoration:none;display:inline-block;font-weight:bold">Confirmar el cambio</a></p>
+  <p style="margin:0 0 16px;font-size:14px;color:#4B5B78">Si el botón no funciona, copia y pega este enlace en tu navegador:<br><span style="word-break:break-all">{{ .ConfirmationURL }}</span></p>
+  <p style="margin:0;font-size:14px;color:#4B5B78">Si tú no lo pediste, ignora este correo y avísanos respondiendo a él.</p>
+</div>

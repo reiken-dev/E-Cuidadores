@@ -62,6 +62,8 @@ const { cfg, llamadas, createClient, reiniciar } = vi.hoisted(() => {
   return { cfg, llamadas, createClient, reiniciar };
 });
 vi.mock('@supabase/supabase-js', () => ({ createClient }));
+const enviarCorreo = vi.hoisted(() => vi.fn());
+vi.mock('@/lib/enviar-correo', () => ({ enviarCorreo: (...a: unknown[]) => enviarCorreo(...a) }));
 
 import { POST } from './route';
 
@@ -118,6 +120,7 @@ beforeEach(() => {
   delete process.env.HOTMART_PRODUCT_ID;
   Object.assign(cfg, { previos: [], errPrevio: null, listados: [[]], errListado: null, errEstado: null, errBorrar: null, errAviso: null, lanzar: false });
   llamadas.length = 0;
+  enviarCorreo.mockReset().mockResolvedValue(true);
   reiniciar();
   createClient.mockClear();
   consola = espias();
@@ -410,5 +413,57 @@ describe('POST /api/hotmart · orden y privacidad', () => {
     cfg.listados = [[confirmado]];
     await enviar(aviso('PURCHASE_APPROVED'));
     expect(createClient).toHaveBeenCalledWith('https://p.supabase.co', 'clave-de-servicio', { auth: { persistSession: false, autoRefreshToken: false } });
+  });
+});
+
+describe('POST /api/hotmart · correos del servicio (ECU-4)', () => {
+  it('un cobro atrasado envía «pago_fallido» al comprador, una sola vez y sin más datos', async () => {
+    cfg.listados = [[confirmado]];
+    const r = await enviar(aviso('PURCHASE_DELAYED'));
+    expect(r.status).toBe(200);
+    expect(enviarCorreo).toHaveBeenCalledTimes(1);
+    expect(enviarCorreo).toHaveBeenCalledWith('pago_fallido', CORREO);
+  });
+  it('quien aún no tiene cuenta (compra pendiente) no recibe correos de cobro ni de cancelación', async () => {
+    cfg.listados = [[]];
+    await enviar(aviso('PURCHASE_DELAYED'));
+    await enviar(cancelacionReal());
+    expect(enviarCorreo).not.toHaveBeenCalled();
+  });
+  it('PURCHASE_CANCELED (reembolso, contracargo o compra cancelada) no manda «cancelación»', async () => {
+    cfg.listados = [[confirmado]];
+    await enviar(aviso('PURCHASE_CANCELED'));
+    expect(enviarCorreo).not.toHaveBeenCalled();
+  });
+  it('una cancelación (formato real, sin purchase) envía «cancelacion»', async () => {
+    cfg.listados = [[confirmado]];
+    await enviar(cancelacionReal());
+    expect(enviarCorreo).toHaveBeenCalledWith('cancelacion', CORREO);
+  });
+  it('compras aprobadas y otros eventos sin correo no envían nada', async () => {
+    cfg.listados = [[confirmado]];
+    await enviar(aviso('PURCHASE_APPROVED'));
+    expect(enviarCorreo).not.toHaveBeenCalled();
+  });
+  it('un aviso repetido NO vuelve a enviar el correo', async () => {
+    cfg.listados = [[confirmado]];
+    cfg.previos = ['PURCHASE_DELAYED'];
+    const r = await enviar(aviso('PURCHASE_DELAYED'));
+    expect((await r.json()).repetido).toBe(true);
+    expect(enviarCorreo).not.toHaveBeenCalled();
+  });
+  it('si el aviso no se pudo guardar (5xx, Hotmart reintentará) no se envía nada todavía', async () => {
+    cfg.listados = [[confirmado]];
+    cfg.errAviso = { code: 'XX000' };
+    expect((await enviar(aviso('PURCHASE_DELAYED'))).status).toBe(500);
+    expect(enviarCorreo).not.toHaveBeenCalled();
+  });
+  it('si el correo no sale, el aviso sigue respondiendo 200 (ya quedó guardado)', async () => {
+    cfg.listados = [[confirmado]];
+    enviarCorreo.mockResolvedValue(false);
+    expect((await enviar(aviso('PURCHASE_DELAYED'))).status).toBe(200);
+    enviarCorreo.mockRejectedValue(new Error('x'));
+    cfg.previos = [];
+    expect((await enviar(aviso('PURCHASE_DELAYED'))).status).toBe(200);
   });
 });

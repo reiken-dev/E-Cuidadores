@@ -8,7 +8,7 @@
 
 import { MARCA } from './marca';
 
-export const VARIABLES = ['nombre', 'familiar', 'n', 'dosis', 'dias', 'fecha', 'enlace'] as const;
+export const VARIABLES = ['nombre', 'familiar', 'n', 'dosis', 'dias', 'fecha', 'enlace', 'marca'] as const;
 export type Variable = (typeof VARIABLES)[number];
 export type Valores = Partial<Record<Variable, string | number>>;
 
@@ -32,9 +32,10 @@ interface Plantilla {
 
 export const PLANTILLAS: Record<SecuenciaId, Plantilla> = {
   bienvenida: {
-    asunto: 'Bienvenida/o, {{nombre}}: ya empezó el cuidado de {{familiar}}',
-    cuerpo: ['Qué bueno tenerte aquí.', 'El primer paso es confirmar la próxima dosis. Quedará con tu nombre y la hora.'],
-    boton: { texto: 'Confirmar la próxima dosis', ruta: '/app' },
+    // Sin el nombre del familiar: este correo sale del servidor y no lleva datos de salud ni de la familia.
+    asunto: 'Te damos la bienvenida a {{marca}}, {{nombre}}',
+    cuerpo: ['Qué bueno tenerte aquí.', 'Tu panel ya está listo: desde Hoy puedes anotar cada dosis con tu nombre y la hora.'],
+    boton: { texto: 'Abrir mi panel', ruta: '/app' },
     marketing: false,
   },
   invitar_hermano: {
@@ -63,13 +64,13 @@ export const PLANTILLAS: Record<SecuenciaId, Plantilla> = {
   },
   pago_fallido: {
     asunto: 'No pudimos cobrar tu pago',
-    cuerpo: ['No pudimos cobrar tu último pago. Actualiza tu medio de pago en Hotmart para mantener el acceso.', 'Este cobro no borra lo que anotaron. Conservas el acceso {{dias}} días más.'],
+    cuerpo: ['No pudimos cobrar tu último pago. Actualiza tu medio de pago en Hotmart para mantener el acceso.', 'Este cobro no borra lo que anotaron.'],
     boton: { texto: 'Actualizar el medio de pago', ruta: '/app/plan' },
     marketing: false,
   },
   cancelacion: {
     asunto: 'Tu suscripción quedó cancelada',
-    cuerpo: ['Gracias por habernos dejado acompañar a {{familiar}}.', 'Si quieres, cuéntanos qué podríamos mejorar respondiendo este correo. Puedes volver cuando quieras.'],
+    cuerpo: ['Gracias por habernos dejado acompañarlos.', 'Si quieres, cuéntanos qué podríamos mejorar respondiendo este correo. Puedes volver cuando quieras.'],
     boton: { texto: 'Guardar el resumen para el médico', ruta: '/app/resumen' },
     marketing: false,
   },
@@ -85,7 +86,10 @@ export function limpiar(v: string | number | undefined): string {
 }
 
 function rellenar(texto: string, valores: Valores): string {
-  return texto.replace(/\{\{(\w+)\}\}/g, (_, k: string) => ((VARIABLES as readonly string[]).includes(k) ? limpiar(valores[k as Variable]) : ''));
+  // {{marca}} es siempre el nombre de la app (lib/marca.ts); el resto sale de la lista blanca y se limpia.
+  return texto.replace(/\{\{(\w+)\}\}/g, (_, k: string) =>
+    k === 'marca' ? limpiar(MARCA.nombre) : (VARIABLES as readonly string[]).includes(k) ? limpiar(valores[k as Variable]) : ''
+  );
 }
 
 export interface CorreoListo {
