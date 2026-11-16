@@ -1,6 +1,6 @@
 # Adaptador de datos: del almacenamiento local a Supabase
 
-> **Estado (ECU-5):** el adaptador para el **organizador** ya está escrito. Con `conexiones.supabase = true` en `lib/marca.ts`, `lib/store.ts` hidrata el círculo desde Supabase (`lib/datos/remoto.ts`, `lib/datos/mapeo.ts`) y guarda cada cambio de forma optimista en segundo plano. Sin esa bandera sigue la demostración local. La invitación de hermanos (ECU-9) ya funciona: `supabase/invitaciones.sql`, `/unirme/<código>` y `app/unirme/actions.ts` (`INVITACION_CONECTADA = true`). Falta que vean los cambios de los demás (ECU-10): hasta entonces `SINCRONIZACION_CONECTADA` sigue en `false`.
+> **Estado (ECU-5):** el adaptador para el **organizador** ya está escrito. Con `conexiones.supabase = true` en `lib/marca.ts`, `lib/store.ts` hidrata el círculo desde Supabase (`lib/datos/remoto.ts`, `lib/datos/mapeo.ts`) y guarda cada cambio de forma optimista en segundo plano. Sin esa bandera sigue la demostración local. La invitación de hermanos (ECU-9) ya funciona: `supabase/invitaciones.sql`, `/unirme/<código>` y `app/unirme/actions.ts` (`INVITACION_CONECTADA = true`). Los cambios de los demás (ECU-10) se ven por sondeo: `lib/store.ts` vuelve a leer el círculo al volver a la pestaña, al recuperar la conexión y cada 30 s con la pestaña visible (nunca con escrituras sin enviar ni oculta). Sin Realtime ni websockets. Si dos hermanos editan lo mismo a la vez, gana el último que guarda. `SINCRONIZACION_CONECTADA = true` y `sincroTexto` solo promete la sincronía con Supabase conectado.
 >
 > Qué hay que ejecutar: `supabase/schema.sql`, `retencion.sql`, `permisos-service-role.sql` y **`datos-reales.sql`**, en ese orden. El círculo se crea en `/bienvenida` y exige una suscripción vigente.
 >
@@ -47,7 +47,7 @@ Lectura (hooks y funciones): `useAppData`, `useSeenBefore`, `useNow`, `useUiRead
 
 ## Lo que todavía no hace
 
-- Ver los cambios de los demás hermanos (ECU-10). Quitar miembros y aprobar el ingreso quedan fuera de ECU-9.
+- Avisos o correos de lo que anota un hermano (ECU-4/ECU-6) y detectar ediciones simultáneas del mismo registro. Quitar miembros y aprobar el ingreso quedan fuera de ECU-9.
 - Borrar el círculo o la cuenta desde la app (derecho de supresión): `borrarTodo` no hace nada en modo remoto.
 - El historial de dosis que se carga es de los últimos 120 días (`DIAS_DE_DOSIS` en `lib/datos/remoto.ts`); lo anterior queda en la base.
 - Si alguien borra su cuenta, sus dosis y notas se conservan sin nombre propio y la pantalla dice «Alguien de la familia».

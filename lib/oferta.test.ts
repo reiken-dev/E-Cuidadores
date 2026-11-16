@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { GARANTIA_DIAS, MESES_GRATIS_ANUAL, OFERTA_ES_EJEMPLO, PRECIO_ANIO, PRECIO_ANIO_POR_MES, PRECIO_MES, PRECIOS_DE_EJEMPLO, TRIAL_DIAS, tieneTrial, textoMesesGratis, usd } from './oferta';
 
 describe('oferta editable', () => {
@@ -29,5 +29,25 @@ describe('oferta editable', () => {
   });
   it('la marca de ejemplo de la oferta sale de la bandera de configuración', () => {
     expect(OFERTA_ES_EJEMPLO).toBe(PRECIOS_DE_EJEMPLO);
+  });
+});
+
+describe('sincroTexto (ECU-10)', () => {
+  async function conSupabase(conectado: boolean) {
+    vi.resetModules();
+    const real = await vi.importActual<typeof import('./marca')>('./marca');
+    vi.doMock('./marca', () => ({ ...real, MARCA: { ...real.MARCA, conexiones: { ...real.MARCA.conexiones, supabase: conectado } } }));
+    const o = await import('./oferta');
+    vi.doUnmock('./marca');
+    return o;
+  }
+  it('con Supabase conectado promete la sincronía (ya funciona)', async () => {
+    const o = await conSupabase(true);
+    expect(o.SINCRONIZACION_CONECTADA).toBe(true);
+    expect(o.sincroTexto('todos lo ven', 'queda aquí')).toBe('todos lo ven');
+  });
+  it('en la demostración (sin Supabase) nunca promete que todos lo ven', async () => {
+    const o = await conSupabase(false);
+    expect(o.sincroTexto('todos lo ven', 'queda aquí')).toBe('queda aquí');
   });
 });

@@ -96,6 +96,11 @@ export default function FamiliaScreen() {
             </li>
           ))}
         </ul>
+        {MODO_REMOTO && (
+          <p className="t-body px-2 pt-3 text-[var(--text-secondary)]">
+            Lo que anota cada hermano aparece aquí solo, en unos 30 segundos o al volver a la app.
+          </p>
+        )}
         {puedeInvitar && (
           <Btn variant="soft" size="lg" full className="mt-2" onClick={() => setInvitar(true)}>
             <UserPlus size={20} aria-hidden="true" />

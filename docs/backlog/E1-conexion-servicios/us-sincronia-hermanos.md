@@ -12,7 +12,7 @@
 - Estados de carga y de error al leer y al guardar.
 - El círculo y la primera medicina se crean tras iniciar sesión y aceptar, en `/bienvenida`.
 - Sin suscripción vigente se explica con claridad.
-- Ningún texto habla de sincronización todavía (`SINCRONIZACION_CONECTADA` sigue en `false`).
+- Ningún texto habla de sincronización todavía (ECU-10 la activó después, por sondeo cada 30 s).
 - El modo demostración queda intacto con Supabase desconectado.
 
 ## Notas

@@ -374,3 +374,170 @@ describe('modo remoto · lo que ya no aplica', () => {
     expect(JSON.parse(store.actions.exportarDatos()).datos.organizerName).toBe('Ana');
   });
 });
+
+describe('modo remoto · ver los cambios de los hermanos (sondeo, ECU-10)', () => {
+  let visible: 'visible' | 'hidden';
+  let eventos: Record<string, Array<() => void>>;
+  beforeEach(() => {
+    visible = 'visible';
+    eventos = {};
+    vi.stubGlobal('window', {
+      localStorage: storage,
+      location: { origin: 'http://localhost:3000', assign: asignar },
+      addEventListener: (n: string, f: () => void) => (eventos[`w:${n}`] ??= []).push(f),
+      removeEventListener: (n: string, f: () => void) => (eventos[`w:${n}`] = (eventos[`w:${n}`] ?? []).filter((x) => x !== f)),
+    });
+    vi.stubGlobal('document', {
+      get visibilityState() {
+        return visible;
+      },
+      addEventListener: (n: string, f: () => void) => (eventos[n] ??= []).push(f),
+      removeEventListener: (n: string, f: () => void) => (eventos[n] = (eventos[n] ?? []).filter((x) => x !== f)),
+    });
+  });
+  afterEach(() => vi.useRealTimers());
+
+  /** Store hidratado y suscrito (como una pantalla abierta), con el reloj bajo control. */
+  async function abierto() {
+    const store = await conDatos();
+    vi.useFakeTimers(); // antes de suscribirse: el temporizador del sondeo se crea al suscribir
+    const baja = store.suscribirAlStore(() => {});
+    await vi.advanceTimersByTimeAsync(0);
+    cargar.mockClear();
+    return { store, baja };
+  }
+  const avanzar = (ms: number) => vi.advanceTimersByTimeAsync(ms);
+
+  it('cada 30 s con la pestaña visible lee el círculo y muestra lo que anotó un hermano', async () => {
+    const { store, baja } = await abierto();
+    cargar.mockResolvedValue({ circleId: 'c1', datos: delServidor({ notes: [note({ id: 'n-hermano', authorId: 'otro' })] }) });
+    await avanzar(29000);
+    expect(cargar).not.toHaveBeenCalled();
+    await avanzar(1500);
+    expect(cargar).toHaveBeenCalledTimes(1);
+    expect(store.getSnapshot().notes.map((n) => n.id)).toEqual(['n-hermano']);
+    baja();
+  });
+
+  it('con la pestaña oculta no lee; al volver a verse, lee enseguida', async () => {
+    const { baja } = await abierto();
+    visible = 'hidden';
+    await avanzar(95000);
+    expect(cargar).not.toHaveBeenCalled();
+    visible = 'visible';
+    eventos.visibilitychange.forEach((f) => f());
+    await avanzar(0);
+    expect(cargar).toHaveBeenCalledTimes(1);
+    baja();
+  });
+
+  it('al recuperar la conexión lee enseguida', async () => {
+    const { baja } = await abierto();
+    eventos['w:online'].forEach((f) => f());
+    await avanzar(0);
+    expect(cargar).toHaveBeenCalledTimes(1);
+    baja();
+  });
+
+  it('no lee mientras hay escrituras sin enviar: nunca pisa lo que la persona acaba de anotar', async () => {
+    const { store, baja } = await abierto();
+    let soltar!: (v: unknown) => void;
+    escribir.guardarNota.mockReturnValue(new Promise((r) => (soltar = r)));
+    store.actions.saveNote(note({ id: 'mia', authorId: U1 }));
+    await avanzar(60000);
+    expect(cargar).not.toHaveBeenCalled();
+    soltar(ok);
+    await avanzar(0);
+    await avanzar(30000);
+    expect(cargar).toHaveBeenCalledTimes(1);
+    baja();
+  });
+
+  it('si no cambió nada, conserva el mismo objeto (la pantalla no se repinta)', async () => {
+    const { store, baja } = await abierto();
+    const antes = store.getSnapshot();
+    cargar.mockResolvedValue({ circleId: 'c1', datos: delServidor() });
+    await avanzar(30000);
+    expect(cargar).toHaveBeenCalledTimes(1);
+    expect(store.getSnapshot()).toBe(antes);
+    baja();
+  });
+
+  it('un fallo del sondeo no muestra aviso ni pierde los datos que ya había', async () => {
+    const { store, baja } = await abierto();
+    cargar.mockRejectedValue(new Error('sin red'));
+    await avanzar(30000);
+    expect(store.leerAvisoDatos()).toBeNull();
+    expect(store.leerEstadoDatos()).toBe('listo');
+    expect(store.getSnapshot().meds).toHaveLength(1);
+    cargar.mockResolvedValue({ circleId: 'c1', datos: delServidor({ notes: [note({ id: 'n2', authorId: 'otro' })] }) });
+    await avanzar(30000);
+    expect(store.getSnapshot().notes).toHaveLength(1);
+    baja();
+  });
+
+  it('una lectura que empezó ANTES de una escritura ya terminada no la pisa (generación)', async () => {
+    const { store, baja } = await abierto();
+    let entregar!: (v: unknown) => void;
+    cargar.mockReturnValueOnce(new Promise((r) => (entregar = r)));
+    await avanzar(30000); // el sondeo empieza y se queda esperando al servidor
+    store.actions.saveNote(note({ id: 'mia', authorId: U1 })); // entra y termina mientras tanto
+    await avanzar(0);
+    entregar({ circleId: 'c1', datos: delServidor() }); // la lectura vieja, sin «mia»
+    await avanzar(0);
+    expect(store.getSnapshot().notes.map((n) => n.id)).toEqual(['mia']);
+    baja();
+  });
+
+  it('un error de red al validar la sesión durante el sondeo NO expulsa a nadie', async () => {
+    const { store, baja } = await abierto();
+    getUser.mockResolvedValue({ data: { user: null }, error: { name: 'AuthRetryableFetchError', status: 0, message: 'fetch' } });
+    await avanzar(30000);
+    expect(asignar).not.toHaveBeenCalled();
+    expect(store.leerEstadoDatos()).toBe('listo');
+    expect(store.getSnapshot().meds).toHaveLength(1);
+    baja();
+  });
+
+  it('tras 3 fallos seguidos avisa que no se actualiza; al recuperarse, el aviso desaparece', async () => {
+    const { store, baja } = await abierto();
+    cargar.mockRejectedValue(new Error('sin red'));
+    await avanzar(30000);
+    await avanzar(30000);
+    expect(store.leerAvisoDatos()).toBeNull();
+    await avanzar(30000);
+    expect(store.leerAvisoDatos()).toMatch(/hermanos/);
+    cargar.mockResolvedValue({ circleId: 'c1', datos: delServidor() });
+    await avanzar(30000);
+    expect(store.leerAvisoDatos()).toBeNull();
+    baja();
+  });
+
+  it('el sondeo y la recarga tras un fallo no se solapan: una lectura a la vez', async () => {
+    const { store, baja } = await abierto();
+    let activas = 0;
+    let maxima = 0;
+    cargar.mockImplementation(async () => {
+      activas++;
+      maxima = Math.max(maxima, activas);
+      await new Promise((r) => setTimeout(r, 1000));
+      activas--;
+      return { circleId: 'c1', datos: delServidor() };
+    });
+    escribir.guardarNota.mockResolvedValue({ ok: false, codigo: 'otro' });
+    await avanzar(30000); // empieza el sondeo
+    store.actions.saveNote(note({ id: 'x', authorId: U1 })); // falla y pide recargar
+    await avanzar(5000);
+    expect(maxima).toBe(1);
+    baja();
+  });
+
+  it('al quitar la última pantalla se detiene el sondeo', async () => {
+    const { baja } = await abierto();
+    baja();
+    await avanzar(120000);
+    expect(cargar).not.toHaveBeenCalled();
+    expect(eventos.visibilitychange ?? []).toHaveLength(0);
+    expect(eventos['w:online'] ?? []).toHaveLength(0);
+  });
+});
