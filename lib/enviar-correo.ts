@@ -6,7 +6,7 @@ import { renderCorreo, type SecuenciaId, type Valores } from './correos';
 import { MARCA } from './marca';
 
 const CORREO_RE = /^[^\s@<>",;]+@[^\s@<>",;]+\.[^\s@<>",;]+$/;
-const ESPERA_MS = 8000;
+const ESPERA_MS = 5000; // el webhook espera este envío: que no pase del plazo de respuesta de Hotmart
 
 const escapar = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 

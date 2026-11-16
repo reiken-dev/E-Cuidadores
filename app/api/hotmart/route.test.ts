@@ -424,6 +424,17 @@ describe('POST /api/hotmart · correos del servicio (ECU-4)', () => {
     expect(enviarCorreo).toHaveBeenCalledTimes(1);
     expect(enviarCorreo).toHaveBeenCalledWith('pago_fallido', CORREO);
   });
+  it('quien aún no tiene cuenta (compra pendiente) no recibe correos de cobro ni de cancelación', async () => {
+    cfg.listados = [[]];
+    await enviar(aviso('PURCHASE_DELAYED'));
+    await enviar(cancelacionReal());
+    expect(enviarCorreo).not.toHaveBeenCalled();
+  });
+  it('PURCHASE_CANCELED (reembolso, contracargo o compra cancelada) no manda «cancelación»', async () => {
+    cfg.listados = [[confirmado]];
+    await enviar(aviso('PURCHASE_CANCELED'));
+    expect(enviarCorreo).not.toHaveBeenCalled();
+  });
   it('una cancelación (formato real, sin purchase) envía «cancelacion»', async () => {
     cfg.listados = [[confirmado]];
     await enviar(cancelacionReal());

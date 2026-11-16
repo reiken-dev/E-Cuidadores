@@ -34,8 +34,8 @@ export const PLANTILLAS: Record<SecuenciaId, Plantilla> = {
   bienvenida: {
     // Sin el nombre del familiar: este correo sale del servidor y no lleva datos de salud ni de la familia.
     asunto: 'Te damos la bienvenida a {{marca}}, {{nombre}}',
-    cuerpo: ['Qué bueno tenerte aquí.', 'El primer paso es confirmar la próxima dosis. Quedará con tu nombre y la hora.'],
-    boton: { texto: 'Confirmar la próxima dosis', ruta: '/app' },
+    cuerpo: ['Qué bueno tenerte aquí.', 'Tu panel ya está listo: desde Hoy puedes anotar cada dosis con tu nombre y la hora.'],
+    boton: { texto: 'Abrir mi panel', ruta: '/app' },
     marketing: false,
   },
   invitar_hermano: {

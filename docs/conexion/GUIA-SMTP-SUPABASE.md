@@ -7,7 +7,7 @@ Con el servicio de correo integrado de Supabase, solo reciben mensajes los miemb
 ## 1. Resend: dominio y clave 🔒
 1. En Resend, **Domains → Add domain**. Usa un subdominio (por ejemplo `correo.tu-dominio.com`) para no mezclar tus correos personales.
 2. Añade en tu proveedor de DNS los registros que Resend te muestra (SPF y DKIM) y pulsa **Verify**. Espera a que diga *Verified*.
-3. **API Keys → Create API Key** con permiso de envío (*Sending access*). Cópiala una sola vez.
+3. **API Keys → Create API Key** con permiso de envío (*Sending access*). Cópiala una sola vez. **Crea dos claves**: una para la app (`RESEND_API_KEY`) y otra solo para el SMTP de Supabase (paso 3). Así, si una se filtra, revocas solo esa. Nunca las pegues en el chat, en git ni en el código.
 
 ## 2. Variables de entorno 🔒
 En `.env.local` (y después en Vercel → Settings → Environment Variables), **sin** `NEXT_PUBLIC_`:
@@ -26,7 +26,7 @@ Sin `EMAIL_FROM` la app no envía nada: no hay remitente por defecto.
 | Host | `smtp.resend.com` |
 | Port | `465` |
 | Username | `resend` |
-| Password | tu `RESEND_API_KEY` (pégala directamente en el panel) |
+| Password | la **segunda** clave de Resend (pégala directamente en el panel de Supabase, no en el chat) |
 
 Después revisa **Authentication → Rate Limits** `[VERIFICAR]`: con SMTP propio, sube el máximo de correos por hora a lo que necesites.
 
@@ -51,12 +51,15 @@ Los correos de acceso no llevan datos de salud: solo el enlace.
 3. Con el simulador del webhook, un cobro atrasado y una cancelación a un correo tuyo: `node --env-file=.env.local scripts/simular-hotmart.mjs PURCHASE_DELAYED tu@correo.com PRUEBA-1` (envía un correo real: hazlo solo con tu consentimiento).
 
 ## 7. Cuando todo llegue bien
-- En `lib/marca.ts`: `conexiones.resend = true`.
-- En `lib/oferta.ts`: `CORREOS_CONECTADOS = true` (los textos pasan a decir «te enviamos…»).
+Activa las banderas solo después de comprobar, con una dirección externa a tu organización, que llegan **los correos de acceso de Supabase** (confirmación, enlace de acceso, recuperar contraseña) y **los tres de la app** (bienvenida, cobro fallido, cancelación).
+- En `lib/marca.ts`: `conexiones.resend = true` (activa los correos de la app).
+- En `lib/oferta.ts`: `CORREOS_CONECTADOS = true` (los textos pasan a decir «te enviamos…»). Los textos legales que hablan de correos también dependen de `COMPROMISOS_LEGALES_CUMPLIDOS` (`lib/legal.ts`).
 - `lib/legal.ts` ya nombra a Resend como proveedor: revisa con tu abogado los textos de privacidad.
 
 ## Qué envía la app por sí misma (`lib/enviar-correo.ts`)
 - **Bienvenida**, al crear tu círculo.
 - **Cobro fallido** y **cancelación**, cuando Hotmart avisa por el webhook (una sola vez por aviso).
 - Nunca llevan el nombre del familiar, medicinas ni notas. Son correos del servicio: no llevan baja ni se pueden desactivar.
+- La bienvenida sale una sola vez por cuenta. El cobro fallido y la cancelación solo se envían a quien ya tiene cuenta y solo con el aviso de baja voluntaria (`SUBSCRIPTION_CANCELLATION`).
+- **Límite conocido:** si Resend no responde en ese momento, el correo de cobro o de cancelación **no se reintenta** (el aviso de Hotmart ya quedó guardado y no se reenvía). Revisa el panel de Resend si sospechas que falló. Un reintento fiable pediría una columna nueva en la base (otra historia).
 - El resumen semanal, los recordatorios de dosis y los correos de retención **no** salen todavía (ECU-6).
