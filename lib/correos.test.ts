@@ -17,14 +17,22 @@ describe('correos de retención', () => {
     expect(c.texto).toContain(baja);
   });
   it('los de cuenta y cobro no llevan baja', () => {
-    const c = renderCorreo('pago_fallido', { dias: 7 });
+    const c = renderCorreo('pago_fallido', {});
     expect(c.bajaUrl).toBeNull();
-    expect(c.texto).toContain('7 días');
+    expect(c.texto).toContain('Actualiza tu medio de pago');
+    expect(c.texto).not.toMatch(/\{\{|\d+ días/);
   });
   it('limpia saltos de línea y HTML en los valores', () => {
     expect(limpiar('Ana\r\nBcc: x@y.com <b>')).toBe('Ana Bcc: x@y.com b');
     const c = renderCorreo('bienvenida', { nombre: 'A\nB<script>', familiar: 'Rosa' });
     expect(c.asunto).not.toMatch(/[\n<>]/);
+  });
+  it('los correos que salen del servidor sin círculo (bienvenida, cobro, cancelación) no llevan el nombre del familiar', () => {
+    for (const id of ['bienvenida', 'pago_fallido', 'cancelacion'] as const) {
+      const c = renderCorreo(id, { nombre: 'Ana', familiar: 'Rosa' });
+      expect(`${c.asunto} ${c.texto}`).not.toContain('Rosa');
+      expect(`${c.asunto} ${c.texto}`).not.toMatch(/\{\{/);
+    }
   });
   it('ninguna plantilla usa variables fuera de la lista blanca ni deja huecos sin valor', () => {
     for (const id of ids) {

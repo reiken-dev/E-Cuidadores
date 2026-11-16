@@ -1,3 +1,4 @@
+// NOTA: esta guía ya está implementada en lib/enviar-correo.ts (ECU-4), con pruebas. Se conserva solo como referencia.
 // lib/enviar-correo.ts — envía con Resend por fetch (sin dependencias). ⚠️ Requiere RESEND_API_KEY y un dominio verificado.
 import { renderCorreo, type SecuenciaId, type Valores } from '@/lib/correos';
 import { MARCA } from '@/lib/marca';

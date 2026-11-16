@@ -48,8 +48,9 @@ El detalle de cada paso (con las instrucciones listas para pegarle a tu IA) est�
 - [ ] Haz una compra de prueba real y una cancelación real. Si la persona aún no tiene cuenta, su compra queda pendiente y se enlaza al confirmar su correo.
 
 ## 4. Resend (correos)
-- [ ] Verifica tu dominio y crea `RESEND_API_KEY` y `EMAIL_FROM`.
-- [ ] Correos mínimos: acceso/confirmación, bienvenida, aviso de cobro, invitación a hermanos.
+- [ ] Sigue `docs/conexion/GUIA-SMTP-SUPABASE.md`: verifica tu dominio en Resend, crea `RESEND_API_KEY` y `EMAIL_FROM` (sin `NEXT_PUBLIC_`), configura el SMTP propio en Supabase y pega las plantillas de `supabase/plantillas-correo/`. Sin SMTP propio, solo los miembros de tu organización reciben el correo de acceso.
+- [x] Correos mínimos del código (ECU-4): bienvenida, cobro fallido y cancelación (`lib/enviar-correo.ts`; apagados mientras `conexiones.resend = false`). El acceso y la confirmación los envía Supabase por tu SMTP. La invitación a hermanos es el enlace que compartes tú.
+- [ ] Cuando lleguen bien en las pruebas: `conexiones.resend = true` y `CORREOS_CONECTADOS = true`.
 - [ ] Recordatorios de dosis y citas (hoy son solo "programados": no llegan).
 
 ## 4b. Retención (ya viene construida: conecta el envío y el cobro)
