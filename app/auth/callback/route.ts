@@ -1,4 +1,7 @@
 // Vuelta del enlace por correo (acceso o confirmación de cuenta) y paso final tras crear la cuenta con sesión.
+// - Con ?token_hash=…&type=…: verifica el código del correo en el servidor (verifyOtp). Funciona abriendo el enlace en
+//   CUALQUIER navegador o dispositivo; el enlace «PKCE» de Supabase (?code=) solo sirve en el navegador donde se empezó.
+//   Las plantillas de correo de supabase/plantillas-correo/ usan este formato.
 // - Con ?code=…: intercambia el código por la sesión.
 // - Sin código: usa la sesión que ya hay en las cookies (alta con sesión inmediata). No abre nada: igualmente
 //   se valida con getUser() y /app sigue exigiendo sesión y consentimientos.
@@ -8,6 +11,11 @@ import { MARCA } from '@/lib/marca';
 import { registrarConsentimientos, tieneConsentimientos } from '@/lib/alta';
 import { rutaSegura } from '@/lib/ruta-segura';
 import { crearClienteServidor } from '@/lib/supabase/servidor';
+
+/** Tipos de verificación que aceptamos del enlace del correo. Cualquier otro valor se rechaza. */
+const TIPOS_DE_CORREO = ['email', 'signup', 'magiclink', 'recovery', 'email_change'] as const;
+type TipoDeCorreo = (typeof TIPOS_DE_CORREO)[number];
+const esTipoDeCorreo = (t: string | null): t is TipoDeCorreo => !!t && (TIPOS_DE_CORREO as readonly string[]).includes(t);
 
 /** Origen público configurado, o el de la petición si falta o está mal escrito (así no se cae con un 500). */
 function origenPublico(deLaPeticion: string): string {
@@ -31,7 +39,13 @@ export async function GET(request: NextRequest) {
   if (!db) return fallo;
 
   const code = searchParams.get('code');
-  if (code) {
+  const tokenHash = searchParams.get('token_hash');
+  if (tokenHash) {
+    const tipo = searchParams.get('type');
+    if (!esTipoDeCorreo(tipo) || tokenHash.length > 200) return fallo;
+    const { error } = await db.auth.verifyOtp({ type: tipo, token_hash: tokenHash });
+    if (error) return fallo;
+  } else if (code) {
     const { error } = await db.auth.exchangeCodeForSession(code);
     if (error) return fallo;
   }
