@@ -42,6 +42,8 @@ En **Authentication → Emails → Templates** pega el contenido de cada archivo
 
 Los correos de acceso no llevan datos de salud: solo el enlace.
 
+**Por qué el enlace lleva `token_hash`:** el enlace estándar de Supabase (PKCE) solo funciona en el navegador donde se empezó el registro; quien crea la cuenta en el computador y abre el correo en el celular veía «enlace no válido». Las plantillas de *Confirm sign up* y *Magic link* usan `{{ .RedirectTo }}…&token_hash={{ .TokenHash }}&type=email`, que `/auth/callback` verifica en el servidor y funciona en cualquier navegador. Para que `{{ .RedirectTo }}` sea válido, esa URL debe estar en *Redirect URLs* (paso 5). Si alguien tiene un antivirus de correo que abre los enlaces por su cuenta, el código puede gastarse antes: en ese caso pide un enlace nuevo.
+
 ## 5. URLs de la app 🔒
 **Authentication → URL Configuration**: *Site URL* = tu dominio público (sin barra final) y, en *Redirect URLs*, `https://tu-dominio.com/auth/callback` y `http://localhost:3000/auth/callback`.
 

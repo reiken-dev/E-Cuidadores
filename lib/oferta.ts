@@ -94,8 +94,9 @@ export const INVITACION_CONECTADA = true;
 export const RENOVACION_REEMBOLSO_DIAS = 7;
 
 /**
- * ¿Ya envías correos reales (enlace de acceso, recordatorios, avisos)? Mientras sea false, las pantallas
+ * ¿Ya envías correos reales (enlace de acceso, bienvenida, cobro)? Mientras sea false, las pantallas
  * NO dicen "te enviamos…" porque la plantilla no envía nada. Ponlo en true al conectar Resend y probarlo.
+ * ECU-4: activo. Los recordatorios de dosis y citas todavía NO se envían (ECU-6): ningún texto debe prometerlos.
  */
-export const CORREOS_CONECTADOS = false;
+export const CORREOS_CONECTADOS = true;
 export const correoTexto = (conCorreos: string, local: string) => (CORREOS_CONECTADOS ? conCorreos : local);

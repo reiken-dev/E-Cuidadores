@@ -17,10 +17,11 @@ const ORIGEN = 'https://app.test';
 const pedir = (ruta: string) => GET(new NextRequest(`${ORIGEN}${ruta}`));
 const destino = (r: Response) => r.headers.get('location');
 
-function db(opciones: { exchange?: unknown; user?: unknown } = {}) {
+function db(opciones: { exchange?: unknown; verify?: unknown; user?: unknown } = {}) {
   return {
     auth: {
       exchangeCodeForSession: vi.fn().mockResolvedValue({ error: opciones.exchange ?? null }),
+      verifyOtp: vi.fn().mockResolvedValue({ error: opciones.verify ?? null }),
       getUser: vi.fn().mockResolvedValue(
         opciones.user === null ? { data: { user: null }, error: { message: 'x' } } : { data: { user: { id: 'u1' } }, error: null }
       ),
@@ -46,6 +47,29 @@ describe('GET /auth/callback', () => {
   it('sin cliente (faltan variables) va a /entrar', async () => {
     crearClienteServidor.mockResolvedValue(null);
     expect(destino(await pedir('/auth/callback'))).toBe(`${ORIGEN}/entrar?error=acceso`);
+  });
+  it('con token_hash verifica el código en el servidor (sirve en cualquier navegador) y sigue a la ruta pedida', async () => {
+    const cliente = db();
+    crearClienteServidor.mockResolvedValue(cliente);
+    expect(destino(await pedir('/auth/callback?next=/unirme/K7QD-3MPX&token_hash=abc123&type=email'))).toBe(`${ORIGEN}/unirme/K7QD-3MPX`);
+    expect(cliente.auth.verifyOtp).toHaveBeenCalledWith({ type: 'email', token_hash: 'abc123' });
+    expect(cliente.auth.exchangeCodeForSession).not.toHaveBeenCalled();
+  });
+  it('token_hash inválido, vencido, ya usado o con un type que no aceptamos va a /entrar sin abrir sesión', async () => {
+    const cliente = db({ verify: { message: 'expired' } });
+    crearClienteServidor.mockResolvedValue(cliente);
+    expect(destino(await pedir('/auth/callback?token_hash=abc&type=email'))).toBe(`${ORIGEN}/entrar?error=acceso`);
+    for (const tipo of ['', 'admin', 'invite', 'sms', '../x']) {
+      crearClienteServidor.mockResolvedValue(db());
+      expect(destino(await pedir(`/auth/callback?token_hash=abc&type=${tipo}`))).toBe(`${ORIGEN}/entrar?error=acceso`);
+    }
+    expect(destino(await pedir('/auth/callback?token_hash=abc'))).toBe(`${ORIGEN}/entrar?error=acceso`);
+    expect(destino(await pedir(`/auth/callback?token_hash=${'a'.repeat(300)}&type=email`))).toBe(`${ORIGEN}/entrar?error=acceso`);
+  });
+  it('con token_hash y sin los dos consentimientos va a /aceptar conservando el destino', async () => {
+    crearClienteServidor.mockResolvedValue(db());
+    tieneConsentimientos.mockResolvedValue(false);
+    expect(destino(await pedir('/auth/callback?next=/unirme/K7QD-3MPX&token_hash=abc&type=email'))).toBe(`${ORIGEN}/aceptar?next=%2Funirme%2FK7QD-3MPX`);
   });
   it('código inválido va a /entrar', async () => {
     crearClienteServidor.mockResolvedValue(db({ exchange: { message: 'bad' } }));
