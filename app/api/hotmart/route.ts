@@ -92,7 +92,11 @@ export async function POST(req: Request) {
         status: estado,
         ...(aviso.plan ? { plan: aviso.plan } : {}),
         ...(aviso.codigoSuscriptor ? { hotmart_subscriber_code: aviso.codigoSuscriptor } : {}),
-        ...(aviso.finPeriodo ? { current_period_end: aviso.finPeriodo } : {}), // [VERIFICAR: ruta del campo, ver lib/hotmart.ts]
+        // [VERIFICAR: ruta del campo, ver lib/hotmart.ts]
+        // Un alta o renovación (estado «active») SIN fecha borra la fecha anterior: si se conservara una vieja, quien acaba de
+        // pagar quedaría sin acceso (la base exige fecha de fin + gracia) en vez de usar la fecha de respaldo por plan (ECU-8).
+        // En los demás estados, un aviso sin fecha no toca lo guardado (p. ej. una cancelación conserva el fin de lo pagado).
+        ...(aviso.finPeriodo ? { current_period_end: aviso.finPeriodo } : estado === 'active' ? { current_period_end: null } : {}),
       };
       const aSuscripcion = (userId: string) =>
         db.from('subscriptions').upsert({ user_id: userId, ...datos, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });

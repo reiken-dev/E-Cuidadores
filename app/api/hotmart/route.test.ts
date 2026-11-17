@@ -465,4 +465,18 @@ describe('POST /api/hotmart · correos del servicio (ECU-4)', () => {
     cfg.previos = [];
     expect((await enviar(aviso('PURCHASE_DELAYED'))).status).toBe(200);
   });
+  it('una compra o renovación SIN fecha de fin borra la fecha anterior (si no, quien paga de nuevo quedaría sin acceso por una fecha vieja)', async () => {
+    cfg.listados = [[confirmado]];
+    await enviar(aviso('PURCHASE_APPROVED', { date_next_charge: undefined }));
+    expect(estadoEscrito()?.fila).toMatchObject({ status: 'active', current_period_end: null });
+  });
+  it('una compra o renovación CON fecha la guarda; un cobro atrasado sin fecha no toca la que había', async () => {
+    cfg.listados = [[confirmado]];
+    await enviar(aviso('PURCHASE_APPROVED'));
+    expect(estadoEscrito()?.fila).toMatchObject({ status: 'active', current_period_end: new Date(Date.UTC(2027, 0, 15)).toISOString() });
+    llamadas.length = 0;
+    await enviar(aviso('PURCHASE_DELAYED', { purchase: { transaction: 'HP-2', price: { value: 59.99, currency_value: 'USD' } }, date_next_charge: undefined }));
+    expect(estadoEscrito()?.fila).toMatchObject({ status: 'past_due' });
+    expect(estadoEscrito()?.fila).not.toHaveProperty('current_period_end');
+  });
 });
