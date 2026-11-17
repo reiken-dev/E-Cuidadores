@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const marca = vi.hoisted(() => ({ nombre: 'E-Cuidadores', sitioUrl: 'https://ejemplo.com', soporteEmail: 'soporte@ejemplo.com', conexiones: { resend: true } }));
 vi.mock('./marca', () => ({ MARCA: marca }));
 
-import { enviarCorreo } from './enviar-correo';
+import { enviarCorreo, resendConfigurado } from './enviar-correo';
 
 const fetchMock = vi.fn();
 const CLAVE = 're_clave_secreta_de_prueba';
@@ -88,5 +88,19 @@ describe('enviarCorreo (ECU-4)', () => {
   it('los correos de cuenta y cobro no llevan cabeceras de baja', async () => {
     await enviarCorreo('pago_fallido', 'ana@ejemplo.com');
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).not.toHaveProperty('headers');
+  });
+  it('con una clave de idempotencia la manda a Resend; sin ella, no', async () => {
+    await enviarCorreo('pago_fallido', 'ana@ejemplo.com', {}, { idempotencia: 'pagador_fantasma/u1/2026-10-20' });
+    expect(fetchMock.mock.calls[0][1].headers['Idempotency-Key']).toBe('pagador_fantasma/u1/2026-10-20');
+    await enviarCorreo('pago_fallido', 'ana@ejemplo.com');
+    expect(fetchMock.mock.calls[1][1].headers).not.toHaveProperty('Idempotency-Key');
+  });
+  it('resendConfigurado exige la bandera, la clave y el remitente', () => {
+    expect(resendConfigurado()).toBe(true);
+    marca.conexiones.resend = false;
+    expect(resendConfigurado()).toBe(false);
+    marca.conexiones.resend = true;
+    delete process.env.EMAIL_FROM;
+    expect(resendConfigurado()).toBe(false);
   });
 });

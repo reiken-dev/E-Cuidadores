@@ -14,12 +14,14 @@ const pedir = (cabecera: string | null = `Bearer ${SECRETO}`, query = '') =>
 beforeEach(() => {
   process.env.CRON_SECRET = SECRETO;
   process.env.BAJA_SECRET = 'un-secreto-de-prueba-largo-de-32-caracteres!!';
-  ejecutarRetencion.mockReset().mockResolvedValue({ ok: true, simulacion: false, marketing: false, pagador: { candidatos: 0, enviados: 0 }, resumen: { candidatos: 0, enviados: 0 } });
+  ejecutarRetencion.mockReset().mockResolvedValue({ ok: true, simulacion: false, marketing: false, pagador: { candidatos: 0, enviados: 0 }, resumen: { candidatos: 0, enviados: 0 }, errores: 0, cortado: false });
   crearClienteServicio.mockReset().mockReturnValue({});
 });
 
 describe('GET /api/cron/retencion (ECU-6)', () => {
-  it('sin CRON_SECRET responde 503 y NO queda abierta', async () => {
+  it('sin CRON_SECRET, o demasiado corto, responde 503 y NO queda abierta', async () => {
+    process.env.CRON_SECRET = 'corto';
+    expect((await pedir('Bearer corto')).status).toBe(503);
     delete process.env.CRON_SECRET;
     expect((await pedir()).status).toBe(503);
     expect((await pedir(null)).status).toBe(503);
@@ -40,7 +42,13 @@ describe('GET /api/cron/retencion (ECU-6)', () => {
     await pedir(undefined, '?simular=1');
     expect(ejecutarRetencion).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ simular: true }));
   });
-  it('un fallo de lectura es 500, la falta de BAJA_SECRET 503, y una excepción no filtra detalles', async () => {
+  it('si alguna reserva falló responde 500 (Vercel lo marca) aunque se atendió al resto', async () => {
+    ejecutarRetencion.mockResolvedValueOnce({ ok: true, simulacion: false, marketing: true, pagador: { candidatos: 2, enviados: 1 }, resumen: { candidatos: 0, enviados: 0 }, errores: 1, cortado: false });
+    const r = await pedir();
+    expect(r.status).toBe(500);
+    expect((await r.json()).pagador.enviados).toBe(1);
+  });
+  it('un fallo de lectura es 500, la falta de configuración 503, y una excepción no filtra detalles', async () => {
     ejecutarRetencion.mockResolvedValueOnce({ ok: false, motivo: 'lectura' });
     expect((await pedir()).status).toBe(500);
     ejecutarRetencion.mockResolvedValueOnce({ ok: false, motivo: 'configuracion' });

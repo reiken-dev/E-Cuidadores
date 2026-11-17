@@ -8,7 +8,8 @@ import { firmarBaja } from '@/lib/baja';
 
 const SECRETO = 'un-secreto-de-prueba-largo-de-32-caracteres!!';
 const U1 = '11111111-1111-4111-8111-111111111111';
-const pedir = (t: string | null) => POST(new Request(`http://localhost/api/baja${t === null ? '' : `?t=${encodeURIComponent(t)}`}`, { method: 'POST', body: 'List-Unsubscribe=One-Click' }));
+const pedir = (t: string | null, cuerpo = 'List-Unsubscribe=One-Click') =>
+  POST(new Request(`http://localhost/api/baja${t === null ? '' : `?t=${encodeURIComponent(t)}`}`, { method: 'POST', body: cuerpo }));
 
 beforeEach(() => {
   process.env.BAJA_SECRET = SECRETO;
@@ -21,6 +22,13 @@ describe('POST /api/baja (baja con un clic)', () => {
     crearClienteServicio.mockReturnValue({ rpc });
     expect((await pedir(firmarBaja(U1, SECRETO)!)).status).toBe(200);
     expect(rpc).toHaveBeenCalledWith('darse_de_baja', { p_user: U1 });
+  });
+  it('un POST sin el cuerpo «List-Unsubscribe=One-Click» (RFC 8058) no es una baja de un clic', async () => {
+    const rpc = vi.fn();
+    crearClienteServicio.mockReturnValue({ rpc });
+    expect((await pedir(firmarBaja(U1, SECRETO)!, '')).status).toBe(400);
+    expect((await pedir(firmarBaja(U1, SECRETO)!, 'otra=cosa')).status).toBe(400);
+    expect(rpc).not.toHaveBeenCalled();
   });
   it('sin firma válida responde 400 y no toca la base', async () => {
     const rpc = vi.fn();

@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const enviarCorreo = vi.hoisted(() => vi.fn());
-vi.mock('./enviar-correo', () => ({ enviarCorreo: (...a: unknown[]) => enviarCorreo(...a) }));
+const resend = vi.hoisted(() => ({ configurado: true }));
+vi.mock('./enviar-correo', () => ({ enviarCorreo: (...a: unknown[]) => enviarCorreo(...a), resendConfigurado: () => resend.configurado }));
 
-import { bearerValido, ejecutarRetencion, TOPE_POR_CORRIDA } from './cron-retencion';
+import { bearerValido, ejecutarRetencion, PRESUPUESTO_MS, TOPE_POR_CORRIDA } from './cron-retencion';
 
 const SECRETO = 'un-secreto-de-prueba-largo-de-32-caracteres!!';
 const U1 = '11111111-1111-4111-8111-111111111111';
@@ -39,6 +40,7 @@ beforeEach(() => {
   Object.assign(cfg, { fantasmas: [], resumen: [], errFantasmas: null, errResumen: null, reservas: {}, errReserva: null });
   llamadas.length = 0;
   enviarCorreo.mockReset().mockResolvedValue(true);
+  resend.configurado = true;
 });
 
 describe('bearerValido', () => {
@@ -73,6 +75,7 @@ describe('ejecutarRetencion (ECU-6)', () => {
     const [id, , valores, op] = enviarCorreo.mock.calls[0];
     expect(id).toBe('pagador_fantasma');
     expect(valores).toEqual({});
+    expect(op.idempotencia).toBe(`pagador_fantasma/${U1}/2026-10-20`); // Resend no entrega dos veces si se reintenta tras un corte
     expect(op.bajaUrl).toMatch(/^https:\/\/ejemplo\.com\/baja\?t=/);
     expect(op.bajaUnClic).toMatch(/^https:\/\/ejemplo\.com\/api\/baja\?t=/);
   });
@@ -107,7 +110,7 @@ describe('ejecutarRetencion (ECU-6)', () => {
     expect(r).toMatchObject({ pagador: { enviados: 1 }, resumen: { enviados: 0 } });
     expect(enviarCorreo).toHaveBeenCalledTimes(1);
   });
-  it('un error al leer candidatos o al reservar NO se disfraza de «0 enviados»', async () => {
+  it('un error al LEER candidatos es fallo; un error al RESERVAR se cuenta y se sigue con los demás', async () => {
     cfg.errFantasmas = { message: 'x' };
     expect(await ejecutarRetencion(db, opciones())).toEqual({ ok: false, motivo: 'lectura' });
     cfg.errFantasmas = null;
@@ -116,19 +119,46 @@ describe('ejecutarRetencion (ECU-6)', () => {
     cfg.errResumen = null;
     cfg.fantasmas = [fantasma()];
     cfg.errReserva = { message: 'x' };
-    expect(await ejecutarRetencion(db, opciones())).toEqual({ ok: false, motivo: 'reserva' });
+    expect(await ejecutarRetencion(db, opciones())).toMatchObject({ ok: true, errores: 1, pagador: { enviados: 0 } });
     expect(enviarCorreo).not.toHaveBeenCalled();
+  });
+  it('una reserva que falla para una persona no deja sin correo a las demás', async () => {
+    cfg.fantasmas = [fantasma(U1), fantasma(U2)];
+    const original = (db as unknown as { rpc: (n: string, a: Record<string, unknown>) => Promise<unknown> }).rpc;
+    const conFallo = { rpc: async (n: string, a: Record<string, unknown>) => (n === 'reservar_envio' && a.p_user === U1 ? { data: null, error: { message: 'x' } } : original(n, a)) } as never;
+    const r = await ejecutarRetencion(conFallo, opciones());
+    expect(r).toMatchObject({ ok: true, errores: 1, pagador: { candidatos: 2, enviados: 1 } });
+  });
+  it('sin Resend configurado, con enlaces a localhost o http, o con BAJA_SECRET igual a CRON_SECRET no envía y lo dice (no «0 enviados»)', async () => {
+    cfg.fantasmas = [fantasma()];
+    resend.configurado = false;
+    expect(await ejecutarRetencion(db, opciones())).toEqual({ ok: false, motivo: 'configuracion' });
+    resend.configurado = true;
+    for (const sitioUrl of ['http://ejemplo.com', 'https://localhost:3000', 'http://localhost:3000', 'https://127.0.0.1']) {
+      expect(await ejecutarRetencion(db, opciones({ sitioUrl }))).toEqual({ ok: false, motivo: 'configuracion' });
+    }
+    expect(await ejecutarRetencion(db, opciones({ secretoCron: SECRETO }))).toEqual({ ok: false, motivo: 'configuracion' });
+    expect(usadas('reservar_envio')).toHaveLength(0); // no se reservó nada
+    expect(enviarCorreo).not.toHaveBeenCalled();
+  });
+  it('se corta por tiempo antes del límite de la función; lo que falta queda para la siguiente corrida', async () => {
+    cfg.fantasmas = [fantasma(U1), fantasma(U2)];
+    let t = 0;
+    const r = await ejecutarRetencion(db, opciones({ reloj: () => (t += PRESUPUESTO_MS / 2 + 1) }));
+    expect(r).toMatchObject({ ok: true, cortado: true });
+    expect(usadas('reservar_envio').length).toBeLessThan(2);
   });
   it('sin BAJA_SECRET no envía marketing (no habría baja válida); en simulación sí cuenta', async () => {
     cfg.fantasmas = [fantasma()];
     expect(await ejecutarRetencion(db, opciones({ secretoBaja: undefined }))).toEqual({ ok: false, motivo: 'configuracion' });
+    expect(await ejecutarRetencion(db, opciones({ secretoBaja: 'corto' }))).toEqual({ ok: false, motivo: 'configuracion' });
     expect(enviarCorreo).not.toHaveBeenCalled();
     expect(await ejecutarRetencion(db, opciones({ secretoBaja: undefined, simular: true }))).toMatchObject({ ok: true });
   });
   it('pide como máximo el tope por corrida', async () => {
     await ejecutarRetencion(db, opciones({ ahora: DOMINGO }));
     expect(usadas('candidatos_pagador_fantasma')[0].args).toEqual({ p_limite: TOPE_POR_CORRIDA });
-    expect(TOPE_POR_CORRIDA).toBe(200);
+    expect(TOPE_POR_CORRIDA).toBe(40);
   });
   it('no escribe nada en consola y la respuesta no lleva correos', async () => {
     const consola = (['log', 'info', 'warn', 'error', 'debug'] as const).map((m) => vi.spyOn(console, m).mockImplementation(() => {}));

@@ -834,6 +834,16 @@ describe('cron de retención (cron-retencion.sql, ECU-6)', () => {
     expect((await resumen(db)).map((x) => x.user_id)).toEqual([A]);
   }, 60000);
 
+  it('resumen semanal: una semana de solo notas o solo dosis no dadas no recibe «0 dosis»', async () => {
+    const { db } = await conCron();
+    await db.exec(`insert into public.notes(circle_id, kind, body, author_name) values ('${C}','otra','nota','Ana')`);
+    expect(await resumen(db)).toHaveLength(0);
+    await db.exec(`insert into public.dose_logs(circle_id, med_id, dose_date, dose_time, given_by_name, skipped_reason) values ('${C}','${M}', current_date, '08:00', 'Ana', 'olvido')`);
+    expect(await resumen(db)).toHaveLength(0);
+    await db.exec(`insert into public.dose_logs(circle_id, med_id, dose_date, dose_time, given_by_name) values ('${C}','${M}', current_date - 1, '08:00', 'Ana')`);
+    expect((await resumen(db)).length).toBeGreaterThan(0);
+  }, 60000);
+
   it('resumen semanal: no se envía si la suscripción del organizador venció, y no repite en la misma semana', async () => {
     const { db, A } = await conCron();
     await db.exec(`insert into public.dose_logs(circle_id, med_id, dose_date, dose_time, given_by_name) values ('${C}','${M}', current_date, '08:00', 'Ana')`);

@@ -5,9 +5,12 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { urlsDeBaja } from './baja';
-import { enviarCorreo } from './enviar-correo';
+import { enviarCorreo, resendConfigurado } from './enviar-correo';
 
-export const TOPE_POR_CORRIDA = 200;
+/** Máximo por secuencia y corrida: el bucle es secuencial y la función tiene 60 s. Con el orden pseudoaleatorio diario, todos se atienden con los días. */
+export const TOPE_POR_CORRIDA = 40;
+/** Presupuesto de tiempo del bucle de envío: se corta antes del límite de la función para no dejar reservas sin correo. */
+export const PRESUPUESTO_MS = 45_000;
 
 /** `Authorization: Bearer <secreto>` en tiempo constante (se comparan huellas de igual largo). */
 export function bearerValido(cabecera: string | null, secreto: string | undefined): boolean {
@@ -26,15 +29,23 @@ export interface ResultadoCron {
   marketing: boolean;
   pagador: Contador;
   resumen: Contador & { omitido?: 'no es domingo' };
+  /** Reservas que fallaron (se siguió con los demás). */
+  errores: number;
+  /** true si se cortó por tiempo: los que faltan se atienden en la siguiente corrida. */
+  cortado: boolean;
 }
-export type RespuestaCron = ResultadoCron | { ok: false; motivo: 'lectura' | 'configuracion' | 'reserva' };
+export type RespuestaCron = ResultadoCron | { ok: false; motivo: 'lectura' | 'configuracion' };
 
 interface Opciones {
   simular: boolean;
   marketingActivo: boolean;
   ahora: Date;
   secretoBaja: string | undefined;
+  /** CRON_SECRET: BAJA_SECRET no puede ser el mismo. */
+  secretoCron?: string;
   sitioUrl: string;
+  /** Reloj en ms (se inyecta en las pruebas). */
+  reloj?: () => number;
 }
 interface CandidatoFantasma {
   user_id: string;
@@ -63,12 +74,22 @@ export async function ejecutarRetencion(db: SupabaseClient, o: Opciones): Promis
     marketing: o.marketingActivo,
     pagador: { candidatos: fantasmas.length, enviados: 0 },
     resumen: { candidatos: resumen.length, enviados: 0, ...(esDomingo ? {} : { omitido: 'no es domingo' as const }) },
+    errores: 0,
+    cortado: false,
   };
   // Simulación o marketing apagado: solo se cuentan los candidatos. No se reserva ni se envía nada.
   if (o.simular || !o.marketingActivo) return salida;
-  if (fantasmas.length + resumen.length > 0 && !urlsDeBaja('00000000-0000-4000-8000-000000000000', o.secretoBaja, o.sitioUrl)) {
-    return { ok: false, motivo: 'configuracion' }; // sin BAJA_SECRET no se envía marketing: no habría baja válida
+  if (fantasmas.length + resumen.length > 0) {
+    // Sin una baja válida, sin Resend o con enlaces a localhost no se envía marketing: un fallo de configuración NO se
+    // disfraza de «0 enviados» (antes se reservaba y liberaba a cada candidato, cada día, sin enviar nada).
+    const sitioMal = !/^https:\/\//i.test(o.sitioUrl) || /^https:\/\/(localhost|127\.|\[::1\])/i.test(o.sitioUrl);
+    const secretoRepetido = Boolean(o.secretoCron) && o.secretoCron === o.secretoBaja;
+    if (!urlsDeBaja('00000000-0000-4000-8000-000000000000', o.secretoBaja, o.sitioUrl) || !resendConfigurado() || sitioMal || secretoRepetido) {
+      return { ok: false, motivo: 'configuracion' };
+    }
   }
+  const reloj = o.reloj ?? Date.now;
+  const inicio = reloj();
 
   async function enviarA(
     c: CandidatoFantasma,
@@ -79,21 +100,28 @@ export async function ejecutarRetencion(db: SupabaseClient, o: Opciones): Promis
     if (reserva.error) return 'error';
     if (reserva.data !== true) return 'omitido'; // de baja, ya recibió un correo hoy o ya se envió
     const urls = urlsDeBaja(c.user_id, o.secretoBaja, o.sitioUrl);
-    const enviado = urls ? await enviarCorreo(secuencia, c.email, valores, { bajaUrl: urls.pagina, bajaUnClic: urls.unClic }) : false;
+    const enviado = urls
+      ? await enviarCorreo(secuencia, c.email, valores, { bajaUrl: urls.pagina, bajaUnClic: urls.unClic, idempotencia: `${secuencia}/${c.user_id}/${c.clave}` })
+      : false;
     if (!enviado) await db.rpc('liberar_envio', { p_user: c.user_id, p_secuencia: secuencia, p_clave: c.clave });
     return enviado ? 'enviado' : 'omitido';
   }
 
   // El de pago (fantasma) va primero: si dos coinciden el mismo día, gana ese (un correo al día).
-  for (const c of fantasmas) {
-    const r = await enviarA(c, 'pagador_fantasma', {});
-    if (r === 'error') return { ok: false, motivo: 'reserva' };
-    if (r === 'enviado') salida.pagador.enviados++;
-  }
-  for (const c of resumen) {
-    const r = await enviarA(c, 'resumen_semanal', { dosis: c.dosis });
-    if (r === 'error') return { ok: false, motivo: 'reserva' };
-    if (r === 'enviado') salida.resumen.enviados++;
+  const lotes: [CandidatoFantasma[], 'pagador_fantasma' | 'resumen_semanal'][] = [
+    [fantasmas, 'pagador_fantasma'],
+    [resumen, 'resumen_semanal'],
+  ];
+  for (const [lista, secuencia] of lotes) {
+    for (const c of lista) {
+      if (reloj() - inicio > PRESUPUESTO_MS) {
+        salida.cortado = true;
+        return salida;
+      }
+      const r = await enviarA(c, secuencia, secuencia === 'resumen_semanal' ? { dosis: (c as CandidatoResumen).dosis } : {});
+      if (r === 'error') salida.errores++; // un caso que falle no deja sin correo a todos los demás
+      else if (r === 'enviado') salida[secuencia === 'pagador_fantasma' ? 'pagador' : 'resumen'].enviados++;
+    }
   }
   return salida;
 }

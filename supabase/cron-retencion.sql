@@ -78,11 +78,13 @@ language sql stable security definer set search_path = '' as $$
       select 1 from public.correo_envios e
       where e.user_id = g.user_id and e.secuencia = 'pagador_fantasma' and e.clave = to_char(g.last_activity_at, 'YYYY-MM-DD')
     )
-  order by g.last_activity_at
+  -- Orden pseudoaleatorio que cambia cada día: si hay más candidatos que el tope, todos se atienden con los días y
+  -- uno que falle siempre (correo rechazado) no bloquea a los demás.
+  order by md5(g.user_id::text || current_date::text)
   limit greatest(1, least(coalesce(p_limite, 200), 500));
 $$;
 
--- Resumen semanal: todos los miembros de círculos con suscripción vigente, solo si hubo actividad en la semana.
+-- Resumen semanal: todos los miembros de círculos con suscripción vigente, solo si hubo al menos una dosis dada en la semana.
 -- clave = semana ISO. Solo conteos (weekly_digest): nunca medicinas, notas ni nombres.
 create or replace function public.candidatos_resumen_semanal(p_limite int default 200)
 returns table (user_id uuid, email text, clave text, dosis int, no_dadas int)
@@ -90,20 +92,27 @@ language sql stable security definer set search_path = '' as $$
   with resumen as (
     select ci.id as circle_id, public.weekly_digest(ci.id) as j
     from public.circles ci
-    where ci.created_by is not null and public.suscripcion_vigente(ci.created_by)
+    where ci.created_by is not null
+      -- Barato primero: weekly_digest solo se calcula para círculos que dieron al menos una dosis esta semana.
+      and exists (
+        select 1 from public.dose_logs l
+        where l.circle_id = ci.id and l.skipped_reason is null and l.dose_date >= current_date - 6
+      )
+      and public.suscripcion_vigente(ci.created_by)
   )
   select m.user_id, u.email::text, to_char(current_date, 'IYYY-"W"IW'),
          (r.j ->> 'dosis_dadas')::int, (r.j ->> 'dosis_no_dadas')::int
   from resumen r
   join public.members m on m.circle_id = r.circle_id
   join auth.users u on u.id = m.user_id and u.email_confirmed_at is not null
-  where (r.j ->> 'dosis_dadas')::int + (r.j ->> 'dosis_no_dadas')::int + (r.j ->> 'novedades')::int > 0
+  -- Con al menos una dosis dada: el texto cuenta dosis; una semana de solo notas o solo dosis no dadas no recibe «0 dosis».
+  where (r.j ->> 'dosis_dadas')::int > 0
     and not exists (select 1 from public.correo_bajas b where b.user_id = m.user_id)
     and not exists (
       select 1 from public.correo_envios e
       where e.user_id = m.user_id and e.secuencia = 'resumen_semanal' and e.clave = to_char(current_date, 'IYYY-"W"IW')
     )
-  order by m.user_id
+  order by md5(m.user_id::text || current_date::text)
   limit greatest(1, least(coalesce(p_limite, 200), 500));
 $$;
 
