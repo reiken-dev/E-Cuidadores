@@ -77,4 +77,16 @@ describe('enviarCorreo (ECU-4)', () => {
     for (const e of consola) expect(e).not.toHaveBeenCalled();
     vi.restoreAllMocks();
   });
+  it('un correo de marketing con baja lleva las cabeceras List-Unsubscribe (baja con un clic, RFC 8058)', async () => {
+    expect(await enviarCorreo('pagador_fantasma', 'ana@ejemplo.com', {}, { bajaUrl: 'https://ejemplo.com/baja?t=a', bajaUnClic: 'https://ejemplo.com/api/baja?t=a' })).toBe(true);
+    const cuerpo = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(cuerpo.headers).toEqual({
+      'List-Unsubscribe': '<https://ejemplo.com/api/baja?t=a>, <https://ejemplo.com/baja?t=a>',
+      'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+    });
+  });
+  it('los correos de cuenta y cobro no llevan cabeceras de baja', async () => {
+    await enviarCorreo('pago_fallido', 'ana@ejemplo.com');
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).not.toHaveProperty('headers');
+  });
 });

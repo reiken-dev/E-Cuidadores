@@ -105,3 +105,10 @@ export const RENOVACION_REEMBOLSO_DIAS = 7;
  */
 export const CORREOS_CONECTADOS = true;
 export const correoTexto = (conCorreos: string, local: string) => (CORREOS_CONECTADOS ? conCorreos : local);
+
+/**
+ * ¿El cron de retención (app/api/cron/retencion) envía correos de marketing (pagador fantasma, resumen semanal)?
+ * Déjalo en false hasta publicar con clientes reales: con false el cron solo cuenta candidatos. Antes de encenderlo
+ * comprueba que la baja funcione (ruta /baja, BAJA_SECRET y supabase/cron-retencion.sql ejecutado) y revisa LISTA-DE-CONEXION.md.
+ */
+export const MARKETING_ACTIVO = false;

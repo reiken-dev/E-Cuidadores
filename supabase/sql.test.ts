@@ -742,3 +742,133 @@ describe('vigencia por fecha y búsqueda por correo (vigencia-y-correo.sql, ECU-
   }, 60000);
 });
 
+
+describe('cron de retención (cron-retencion.sql, ECU-6)', () => {
+  async function conCron() {
+    const t = await dosCuentas();
+    for (const f of ['datos-reales.sql', 'vigencia-y-correo.sql', 'cron-retencion.sql']) await t.db.exec(leer(f));
+    return t;
+  }
+  const una = async <T>(db: PGlite, sql: string) => (await db.query<T>(sql)).rows;
+  const dias = (n: number) => `now() - interval '${n} days'`;
+  /** El círculo de la organizadora, creado hace 30 días, con la última actividad (una dosis) hace `hace` días. */
+  async function circuloAntiguo(db: PGlite, hace: number) {
+    await db.exec(`update public.circles set created_at = ${dias(30)} where id = '${C}'`);
+    await db.exec(`insert into public.dose_logs(circle_id, med_id, dose_date, dose_time, given_by_name, given_at) values ('${C}','${M}', current_date - ${hace}, '08:00', 'Ana', ${dias(hace)})`);
+  }
+  const fantasmas = (db: PGlite) => una<{ user_id: string; email: string; clave: string }>(db, `select * from public.candidatos_pagador_fantasma()`);
+  const resumen = (db: PGlite) => una<{ user_id: string; email: string; clave: string; dosis: number; no_dadas: number }>(db, `select * from public.candidatos_resumen_semanal()`);
+  const reservar = async (db: PGlite, u: string, secuencia = 'pagador_fantasma', clave = 'k1') =>
+    (await db.query<{ r: boolean }>(`select public.reservar_envio('${u}','${secuencia}','${clave}') as r`)).rows[0].r;
+
+  it('se ejecuta sin errores y dos veces seguidas (idempotente)', async () => {
+    const { db } = await conCron();
+    await expect(db.exec(leer('cron-retencion.sql'))).resolves.not.toThrow();
+  }, 60000);
+
+  it('reservar_envio: una vez por clave, uno al día entre secuencias, y la baja lo bloquea todo', async () => {
+    const { db, A, B } = await conCron();
+    expect(await reservar(db, A, 'pagador_fantasma', 'k1')).toBe(true);
+    expect(await reservar(db, A, 'pagador_fantasma', 'k1')).toBe(false); // ya enviada
+    expect(await reservar(db, A, 'resumen_semanal', '2026-W46')).toBe(false); // ya recibió un correo hoy
+    await db.exec(`update public.correo_envios set enviado_en = ${dias(2)}`);
+    expect(await reservar(db, A, 'resumen_semanal', '2026-W46')).toBe(true); // otro día: sí
+    await db.exec(`select public.darse_de_baja('${B}')`);
+    expect(await reservar(db, B)).toBe(false);
+    expect(await una(db, `select 1 from public.correo_envios where user_id = '${B}'`)).toHaveLength(0);
+  }, 60000);
+
+  it('liberar_envio deshace la reserva y darse_de_baja es idempotente', async () => {
+    const { db, A } = await conCron();
+    expect(await reservar(db, A)).toBe(true);
+    await db.exec(`select public.liberar_envio('${A}','pagador_fantasma','k1')`);
+    expect(await reservar(db, A)).toBe(true); // se puede reintentar
+    await db.exec(`select public.darse_de_baja('${A}')`);
+    await expect(db.exec(`select public.darse_de_baja('${A}')`)).resolves.not.toThrow();
+    expect(await una(db, `select 1 from public.correo_bajas`)).toHaveLength(1);
+  }, 60000);
+
+  it('pagador fantasma: 14+ días sin actividad en un círculo de 14+ días con suscripción vigente; clave = última actividad', async () => {
+    const { db, A } = await conCron();
+    await circuloAntiguo(db, 20);
+    const f = await fantasmas(db);
+    expect(f).toHaveLength(1);
+    expect(f[0]).toMatchObject({ user_id: A, email: 'a@x.com' });
+    expect(f[0].clave).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  }, 60000);
+
+  it('pagador fantasma: NO un círculo recién creado (día 0), ni con actividad reciente', async () => {
+    const { db } = await conCron();
+    expect(await fantasmas(db)).toHaveLength(0); // círculo de hoy, sin actividad
+    await circuloAntiguo(db, 3);
+    expect(await fantasmas(db)).toHaveLength(0); // actividad hace 3 días
+  }, 60000);
+
+  it('pagador fantasma: se excluye la suscripción vencida, la baja, el correo sin confirmar y lo ya enviado en ese episodio', async () => {
+    const { db, A } = await conCron();
+    await circuloAntiguo(db, 20);
+    await db.exec(`update public.subscriptions set status='active', current_period_end = ${dias(30)}`);
+    expect(await fantasmas(db)).toHaveLength(0); // venció hace 30 días (fuera de la gracia)
+    await db.exec(`update public.subscriptions set current_period_end = now() + interval '10 days'`);
+    expect(await fantasmas(db)).toHaveLength(1);
+    await db.exec(`update auth.users set email_confirmed_at = null where id = '${A}'`);
+    expect(await fantasmas(db)).toHaveLength(0);
+    await db.exec(`update auth.users set email_confirmed_at = now() where id = '${A}'`);
+    const clave = (await fantasmas(db))[0].clave;
+    await db.exec(`insert into public.correo_envios(user_id, secuencia, clave, enviado_en) values ('${A}','pagador_fantasma','${clave}', ${dias(1)})`);
+    expect(await fantasmas(db)).toHaveLength(0); // ya se envió en este episodio
+    await db.exec(`delete from public.correo_envios`);
+    await db.exec(`select public.darse_de_baja('${A}')`);
+    expect(await fantasmas(db)).toHaveLength(0);
+  }, 60000);
+
+  it('resumen semanal: solo con actividad, a TODOS los miembros, con conteos y sin baja', async () => {
+    const { db, A, B } = await conCron();
+    expect(await resumen(db)).toHaveLength(0); // sin actividad no se envía
+    await db.exec(`insert into public.dose_logs(circle_id, med_id, dose_date, dose_time, given_by_name) values ('${C}','${M}', current_date, '08:00', 'Ana')`);
+    await db.exec(`insert into public.dose_logs(circle_id, med_id, dose_date, dose_time, given_by_name, skipped_reason) values ('${C}','${M}', current_date - 1, '08:00', 'Ana', 'olvido')`);
+    const r = await resumen(db);
+    expect(r.map((x) => x.user_id).sort()).toEqual([A, B].sort());
+    expect(r.every((x) => x.dosis === 1 && x.no_dadas === 1 && /^\d{4}-W\d{2}$/.test(x.clave))).toBe(true);
+    await db.exec(`select public.darse_de_baja('${B}')`);
+    expect((await resumen(db)).map((x) => x.user_id)).toEqual([A]);
+  }, 60000);
+
+  it('resumen semanal: no se envía si la suscripción del organizador venció, y no repite en la misma semana', async () => {
+    const { db, A } = await conCron();
+    await db.exec(`insert into public.dose_logs(circle_id, med_id, dose_date, dose_time, given_by_name) values ('${C}','${M}', current_date, '08:00', 'Ana')`);
+    const clave = (await resumen(db))[0].clave;
+    await db.exec(`insert into public.correo_envios(user_id, secuencia, clave) values ('${A}','resumen_semanal','${clave}')`);
+    expect((await resumen(db)).map((x) => x.user_id)).not.toContain(A);
+    await db.exec(`update public.subscriptions set status='expired'`);
+    expect(await resumen(db)).toHaveLength(0);
+  }, 60000);
+
+  it('los candidatos solo traen conteos y correo: nunca medicinas, notas ni nombres de la familia', async () => {
+    const { db } = await conCron();
+    await db.exec(`insert into public.dose_logs(circle_id, med_id, dose_date, dose_time, given_by_name) values ('${C}','${M}', current_date, '08:00', 'Ana')`);
+    const columnas = Object.keys((await resumen(db))[0]).sort();
+    expect(columnas).toEqual(['clave', 'dosis', 'email', 'no_dadas', 'user_id']);
+    const otro = await conCron();
+    await circuloAntiguo(otro.db, 40);
+    expect(Object.keys((await fantasmas(otro.db))[0]).sort()).toEqual(['clave', 'email', 'user_id']);
+  }, 60000);
+
+  it('anon y authenticated no ejecutan las funciones ni leen las tablas; service_role sí', async () => {
+    const { db, A, B } = await conCron();
+    const llamadas = [
+      `select public.reservar_envio('${A}','pagador_fantasma','k')`,
+      `select public.liberar_envio('${A}','pagador_fantasma','k')`,
+      `select public.darse_de_baja('${A}')`,
+      `select * from public.candidatos_pagador_fantasma()`,
+      `select * from public.candidatos_resumen_semanal()`,
+      `select * from public.correo_bajas`,
+      `select * from public.correo_envios`,
+      `insert into public.correo_bajas(user_id) values ('${B}')`,
+    ];
+    for (const rol of ['anon', 'authenticated'] as const) {
+      for (const sql of llamadas) await como(db, rol, B, async () => expect(db.query(sql)).rejects.toThrow());
+    }
+    await como(db, 'service_role', null, async () => expect((await db.query<{ r: boolean }>(`select public.reservar_envio('${A}','pagador_fantasma','k') as r`)).rows[0].r).toBe(true));
+  }, 60000);
+});

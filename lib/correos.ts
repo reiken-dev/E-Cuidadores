@@ -51,13 +51,14 @@ export const PLANTILLAS: Record<SecuenciaId, Plantilla> = {
     marketing: true,
   },
   resumen_semanal: {
-    asunto: 'La semana del círculo de {{familiar}}',
-    cuerpo: ['Esta semana el círculo de {{familiar}} registró {{dosis}} dosis.', 'Registrar también lo que no se pudo dar cuenta: es parte de cuidar bien.'],
+    // Sin el nombre del familiar: un correo puede reenviarse o leerse en otro lado. Solo conteos.
+    asunto: 'La semana de tu círculo',
+    cuerpo: ['Esta semana tu círculo registró {{dosis}} dosis.', 'Registrar también lo que no se pudo dar cuenta: es parte de cuidar bien.'],
     boton: { texto: 'Ver la semana completa', ruta: '/app/semana' },
     marketing: true,
   },
   pagador_fantasma: {
-    asunto: '{{familiar}} sigue en tu círculo',
+    asunto: 'Tu círculo sigue aquí',
     cuerpo: ['Retomar es fácil: la próxima dosis te espera.'],
     boton: { texto: 'Abrir Hoy', ruta: '/app' },
     marketing: true,

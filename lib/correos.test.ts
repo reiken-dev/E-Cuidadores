@@ -48,4 +48,11 @@ describe('correos de retención', () => {
       expect(t).not.toMatch(/medicin|pastilla|losart|metformin/i);
     }
   });
+  it('el pagador fantasma y el resumen semanal (cron) solo llevan conteos: sin el nombre del familiar ni de la persona', () => {
+    for (const id of ['pagador_fantasma', 'resumen_semanal'] as const) {
+      const c = renderCorreo(id, { nombre: 'Ana', familiar: 'Rosa', dosis: 12 }, { bajaUrl: baja });
+      expect(`${c.asunto} ${c.texto}`).not.toMatch(/Rosa|Ana|\{\{/);
+    }
+    expect(renderCorreo('resumen_semanal', { dosis: 12 }, { bajaUrl: baja }).texto).toContain('12 dosis');
+  });
 });

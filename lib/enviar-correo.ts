@@ -23,13 +23,24 @@ function armarHtml(texto: string, boton: { texto: string; url: string }, bajaUrl
 }
 
 /** Envía un correo de la lista de secuencias. true = Resend lo aceptó; false = no se envió (apagado, mal configurado o falló). */
-export async function enviarCorreo(id: SecuenciaId, para: string, valores: Valores = {}, opciones: { bajaUrl?: string } = {}): Promise<boolean> {
+export async function enviarCorreo(
+  id: SecuenciaId,
+  para: string,
+  valores: Valores = {},
+  /** bajaUrl: página de baja (obligatoria en marketing). bajaUnClic: ruta POST de baja con un clic para las cabeceras List-Unsubscribe. */
+  opciones: { bajaUrl?: string; bajaUnClic?: string } = {}
+): Promise<boolean> {
   try {
     const clave = process.env.RESEND_API_KEY;
     const de = process.env.EMAIL_FROM;
     if (!MARCA.conexiones.resend || !clave || !de) return false;
     if (typeof para !== 'string' || para.length > 254 || !CORREO_RE.test(para)) return false;
-    const c = renderCorreo(id, valores, opciones);
+    const c = renderCorreo(id, valores, { bajaUrl: opciones.bajaUrl });
+    // Cabeceras de baja con un clic (RFC 8058): Gmail y Outlook muestran su propio botón «Cancelar suscripción».
+    const cabecerasBaja =
+      c.bajaUrl && opciones.bajaUnClic
+        ? { 'List-Unsubscribe': `<${opciones.bajaUnClic}>, <${c.bajaUrl}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' }
+        : undefined;
     const r = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { Authorization: `Bearer ${clave}`, 'Content-Type': 'application/json' },
@@ -40,6 +51,7 @@ export async function enviarCorreo(id: SecuenciaId, para: string, valores: Valor
         subject: c.asunto,
         text: c.texto,
         html: armarHtml(c.texto, c.boton, c.bajaUrl),
+        ...(cabecerasBaja ? { headers: cabecerasBaja } : {}),
       }),
       signal: AbortSignal.timeout(ESPERA_MS),
     });

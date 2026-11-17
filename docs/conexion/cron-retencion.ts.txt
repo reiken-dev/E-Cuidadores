@@ -1,3 +1,5 @@
+// NOTA: esta guía ya está implementada (ECU-6): app/api/cron/retencion/route.ts, lib/cron-retencion.ts, lib/baja.ts, app/baja/ y
+// supabase/cron-retencion.sql, con pruebas. Se conserva solo como referencia.
 // app/api/cron/retencion/route.ts — una vez al día. Vercel manda Authorization: Bearer $CRON_SECRET.
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
