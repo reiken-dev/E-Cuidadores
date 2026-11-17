@@ -13,6 +13,14 @@
 - Todo va en una migración nueva en `supabase/`, sin editar `schema.sql` ni `retencion.sql` ya aplicados, y con confirmación del alumno antes de escribir el SQL.
 - Pruebas en `supabase/sql.test.ts` (vigencia por estado y fecha, y la búsqueda por correo) y en `app/api/hotmart/route.test.ts`.
 
+## Resultado (ECU-8)
+- `supabase/vigencia-y-correo.sql`: `active` y `past_due` vencen a los **7 días** de `current_period_end`; sin fecha se usa la de respaldo por plan (mensual y desconocido 31 días, anual 366 días desde la última actualización) más la gracia. `trial` queda como estaba (vigente sin fecha; hoy ningún aviso lo asigna: su vencimiento se define cuando se confirme la prueba gratis con Hotmart). `canceled` no cambia (sin gracia).
+- `usuario_por_correo(p_email)`: solo correos confirmados y solo para `service_role`; el webhook la usa en lugar de recorrer `listUsers`.
+- `planDeSuscripcion` (`lib/datos/mapeo.ts`) aplica la misma regla, para que la pantalla y la base coincidan.
+- Una compra o renovación (`active`) sin fecha de fin borra la fecha anterior, para que una fecha vieja no deje sin acceso a quien acaba de pagar. Un aviso sin fecha en otros estados no toca lo guardado.
+- Límite conocido: con la fecha de respaldo, cada aviso aplicado renueva 31 días de acceso (acotado, no permanente).
+- Pendiente fuera de esta historia: confirmar `date_next_charge` con un aviso real de Hotmart (`[VERIFICAR]`).
+
 ## Notas
 - Viene de la revisión adversarial de ECU-3 (hallazgos 1 y 6, que necesitan SQL).
 - Depende de: webhook de Hotmart (ECU-3).
