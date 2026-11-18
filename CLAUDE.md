@@ -43,10 +43,10 @@
 ## Recomendaciones técnicas y de calidad
 
 Stack verificado el 2026-10-19 con `npm ci` desde el lockfile:
-- Next.js 16.4.2 con Turbopack por defecto (no añadas `--webpack`) y React Compiler activo (`reactCompiler: true` en `next.config.ts`, con `babel-plugin-react-compiler`).
+- Next.js 16.4.6 con Turbopack por defecto (no añadas `--webpack`) y React Compiler activo (`reactCompiler: true` en `next.config.ts`, con `babel-plugin-react-compiler`).
 - React 19.3.1, Tailwind CSS 4.3.3 (con `@tailwindcss/postcss`).
 - TypeScript 6.0.3. No subas a TypeScript 7 mientras `typescript-eslint` no lo soporte: rompe `npm run lint`.
-- ESLint 10.13.0 con configuración plana (`eslint.config.mjs`) y `eslint-config-next` 16.4.2.
+- ESLint 10.13.0 con configuración plana (`eslint.config.mjs`) y `eslint-config-next` 16.4.6.
 - Vitest 5.0.5 para la lógica (`npm test`) y Playwright 1.64.1 con Chromium para el recorrido (`npm run test:e2e`).
 - Zod 4.6.7, `@supabase/supabase-js` 2.118 y `@supabase/ssr` 0.12 no están instalados porque la app aún no los usa. Instálalos con `npm install <paquete>@latest` cuando los necesites.
 - Node 24 (`.nvmrc`). `engines` exige Node 22.18 o superior.
