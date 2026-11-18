@@ -9,6 +9,8 @@ Reglas que valen para **todos**:
 - Variables: `{{nombre}}` (quien organiza), `{{familiar}}` (a quien cuidan), `{{hermano}}`, `{{enlace_app}}`, `{{enlace_panel_pagos}}`, `{{soporte}}`.
 - Verifica tu dominio (SPF, DKIM, DMARC) antes de enviar; Resend te guía en la configuración.
 
+> **Estado (ECU-6):** el cron diario (`app/api/cron/retencion`) ya envía **C. Pagador fantasma** (día 14, una vez por episodio de inactividad) y **B. Ritual semanal** (domingos, solo con actividad, a todos los miembros), ambos con enlace de baja, máximo un correo al día por persona y registro de envíos. Salen **apagados** (`MARKETING_ACTIVO = false` en `lib/oferta.ts`) hasta publicar. En esos dos correos el nombre del familiar no va: solo conteos. Lo demás (A, el día 21 de C, D, F y el dunning por etapas de E) sigue pendiente.
+
 ## A. Primera semana (activación)
 
 | Cuándo | Disparador | Asunto | Cuerpo (resumen) |

@@ -77,7 +77,7 @@ export const COOKIES_KEY = 'entre-hermanos:cookies:v1';
 
 /**
  * Los textos legales se COMPROMETEN a tres cosas que la plantilla deja listas solo como ejemplo:
- *  1) enlace de baja funcional en los correos de retención (ruta /baja),
+ *  1) enlace de baja funcional en los correos de retención (ruta /baja; hecho en ECU-6: lib/baja.ts, app/baja y supabase/cron-retencion.sql),
  *  2) aviso por correo antes de la renovación anual (secuencia D de docs/retencion/CORREOS.md),
  *  3) cierre de cuenta y borrado de datos en el servidor (hoy, por correo en 15 días hábiles).
  * Ponla en true SOLO cuando las tres funcionen. `npm run verificar` te lo recuerda.
