@@ -5,12 +5,14 @@
 ## Qué es esta plantilla
 - Una app Next.js 16 que el alumno personaliza y vende: un panel para cuidar a un familiar (medicinas, citas, bitácora y familia).
 - Tras `npm install`, y antes de escribir código, lee la guía de Next.js en `node_modules/next/dist/docs/`: cambia respecto a lo que conoces.
-- Hoy todo se guarda en el navegador (`lib/store.ts`). No hay cuentas, cobros ni correos reales conectados.
+- Con `supabase: false` (hoy) todo se guarda en el navegador (`lib/store.ts`); con `supabase: true`, en Supabase (adaptador en `lib/datos/`).
 - Obligatorios para vender: Supabase y Hotmart (el gate lo exige). Resend es opcional: si no envía correos, se queda en `false`. GitHub y Vercel sirven para publicar.
 
 ## Qué está hecho y qué no
 - Hecho: landing, paywall, onboarding, app de demostración, páginas legales (borradores) y el gate `npm run verificar`.
-- No hecho: la app no se entera de compras ni cancelaciones (el webhook de Hotmart está en `docs/conexion/` sin activar); no envía correos; no hay sesión real (`sesionDelServidor()` en `lib/sesion.ts` devuelve `null`); no sincroniza entre hermanos; el cron de retención no está activo.
+- Hecho en código (épica E1, ECU-2 a ECU-10 y ECU-6): sesión real, webhook de Hotmart (`app/api/hotmart`), correos con Resend (`resend: true`), datos en Supabase, invitar hermanos, ver los cambios de los demás (sondeo cada 30 s), vigencia por fecha y cron de retención con baja (`MARKETING_ACTIVO = false`).
+- Sin probar en producción: `supabase` y `hotmart` siguen en `false` en `lib/marca.ts` hasta probarlos de punta a punta (ECU-17 y ECU-18).
+- No hecho (épica E2, `docs/backlog/E2-listo-para-vender/`): cerrar la cuenta desde la app, borrado automático tras cancelar, aviso de renovación anual (por eso `COMPROMISOS_LEGALES_CUMPLIDOS = false`), recordatorios push de dosis y citas, y los datos legales del titular. No hay proveedor de medición, por decisión del alumno.
 - `/app` ya tiene el guard: con `supabase: true` y sin sesión real, redirige a `/entrar`.
 - Sin Supabase conectado, `/app` y `/entrar` son una demostración: no crean cuentas, no envían correos y muestran un banner que lo dice.
 - No prometas en pantalla lo que el código no hace: revisa que ningún texto hable de sincronía, correos o cobros que aún no existen.
