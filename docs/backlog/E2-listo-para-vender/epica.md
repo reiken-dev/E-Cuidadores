@@ -8,15 +8,19 @@ El código de E1 está en `main`, pero `npm run verificar -- --estricto` todaví
 
 **Terminado cuando:** `npm run verificar -- --estricto` sale sin fallos graves y sin más avisos que los aceptados abajo, con `supabase: true` y `hotmart: true` probados de punta a punta.
 
-### Avisos del gate que esta épica no puede cerrar (decisión pendiente del alumno)
-- «Medición sin proveedor»: sale mientras `enviar()` de `lib/analytics.ts` no tenga proveedor, y el alumno decidió no medir por ahora.
-- «Datos: siguen guardados en el navegador»: sale mientras `lib/store.ts` mencione `localStorage`, y el modo demostración lo sigue usando aunque `supabase` esté en `true`.
-- Con `--estricto` cualquier aviso hace fallar el gate, y no se cambia el script para que pase. El alumno decide: aceptar estos dos avisos de forma explícita (y anotarlo aquí) o abrir una historia que los resuelva de verdad.
+### Avisos del gate aceptados por el alumno (2026-11-25)
+Con `--estricto` cualquier aviso hace fallar el gate, y no se cambia el script para que pase. El alumno acepta de forma explícita estos dos avisos, que seguirán saliendo:
+- «Medición sin proveedor»: el alumno decidió no medir por ahora (`enviar()` de `lib/analytics.ts` sin proveedor).
+- «Datos: siguen guardados en el navegador»: el aviso mira si `lib/store.ts` menciona `localStorage`, y el modo demostración lo sigue usando aunque `supabase` esté en `true`.
+
+Cualquier otro aviso sí bloquea la venta.
 
 ## Decisiones del alumno (2026-11-25)
 - Recordatorios de dosis y citas: notificaciones push reales (Web Push), no solo en la app ni por correo.
 - Medición: ninguna por ahora.
 - Aviso de renovación anual: 7 días antes.
+- Anotaciones de un miembro que cierra su cuenta: se conservan con el nombre cambiado a «Un familiar».
+- Registros de pago al cerrar la cuenta: `payment_events` se conserva como registro de ingresos (sin datos de salud), con el plazo que fije el abogado (ECU-20); `pending_purchases` se borra.
 
 ## Historias (código)
 | Archivo | Historia | Depende de |

@@ -9,7 +9,7 @@
 - Identificador fiscal: la app no tiene campo para él (`lib/legal.ts`). Si el país lo exige, hace falta un cambio de código y de textos (PR aparte).
 - Quitar los `[VERIFICAR: revisión de profesional de salud]` solo tras esa revisión.
 - Confirmar y quitar los `[VERIFICAR]` de `docs/retencion/ESTRATEGIA.md`.
-- La política de privacidad debe mencionar los terceros nuevos: el servicio push del navegador (ECU-15) y qué registros de pago se conservan tras cerrar la cuenta (ECU-12).
+- La política de privacidad debe mencionar los terceros nuevos: el servicio push del navegador (ECU-15) y que `payment_events` se conserva tras cerrar la cuenta como registro de ingresos (ECU-12). El abogado fija ese plazo de conservación.
 - Revisar privacidad, términos, reembolsos, cookies y aviso médico con un abogado del país, después de ECU-12 a ECU-16 (cambian los textos).
 
 ## Terminado cuando
