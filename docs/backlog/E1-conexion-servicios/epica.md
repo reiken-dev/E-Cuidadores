@@ -1,7 +1,7 @@
 # E1 · Conexión de servicios
 
 **Jira:** ECU-1
-**Estado:** borrador, por validar con el alumno
+**Estado:** código hecho; falta la prueba en producción (E2)
 
 ## Objetivo
 Hoy la app es una demostración que guarda todo en el navegador (`lib/store.ts`). Esta épica conecta los servicios reales para poder venderla, sin prometer en pantalla nada que el código no haga.

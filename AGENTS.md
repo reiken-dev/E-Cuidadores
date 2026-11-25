@@ -10,7 +10,7 @@
 
 ## Qué está hecho y qué no
 - Hecho: landing, paywall, onboarding, app de demostración, páginas legales (borradores) y el gate `npm run verificar`.
-- Hecho en código (épica E1, ECU-2 a ECU-10 y ECU-6): sesión real, webhook de Hotmart (`app/api/hotmart`), correos con Resend (`resend: true`), datos en Supabase, invitar hermanos, ver los cambios de los demás (sondeo cada 30 s), vigencia por fecha y cron de retención con baja (`MARKETING_ACTIVO = false`).
+- Hecho en código (épica E1, ECU-2 a ECU-10): sesión real, webhook de Hotmart (`app/api/hotmart`), correos con Resend (`resend: true`), datos en Supabase, invitar hermanos, ver los cambios de los demás (sondeo cada 30 s), vigencia por fecha y cron de retención con baja (`MARKETING_ACTIVO = false`).
 - Sin probar en producción: `supabase` y `hotmart` siguen en `false` en `lib/marca.ts` hasta probarlos de punta a punta (ECU-17 y ECU-18).
 - No hecho (épica E2, `docs/backlog/E2-listo-para-vender/`): cerrar la cuenta desde la app, borrado automático tras cancelar, aviso de renovación anual (por eso `COMPROMISOS_LEGALES_CUMPLIDOS = false`), recordatorios push de dosis y citas, y los datos legales del titular. No hay proveedor de medición, por decisión del alumno.
 - `/app` ya tiene el guard: con `supabase: true` y sin sesión real, redirige a `/entrar`.
@@ -50,7 +50,7 @@ Stack verificado el 2026-10-19 con `npm ci` desde el lockfile:
 - TypeScript 6.0.3. No subas a TypeScript 7 mientras `typescript-eslint` no lo soporte: rompe `npm run lint`.
 - ESLint 10.13.0 con configuración plana (`eslint.config.mjs`) y `eslint-config-next` 16.4.2.
 - Vitest 5.0.5 para la lógica (`npm test`) y Playwright 1.64.1 con Chromium para el recorrido (`npm run test:e2e`).
-- Zod 4.6.7, `@supabase/supabase-js` 2.118 y `@supabase/ssr` 0.12 no están instalados porque la app aún no los usa. Instálalos con `npm install <paquete>@latest` cuando los necesites.
+- `@supabase/supabase-js` 2.119 y `@supabase/ssr` 0.12 ya están instalados (los usan la sesión, los datos, el webhook y el cron). Zod no está instalado: si lo necesitas, `npm install zod@latest`.
 - Node 24 (`.nvmrc`). `engines` exige Node 22.18 o superior.
 
 Verificación, en este orden:

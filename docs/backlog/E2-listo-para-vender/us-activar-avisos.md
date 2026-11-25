@@ -8,13 +8,16 @@
 ## Criterios de aceptación
 - Service worker y Web Push con claves VAPID: la pública en `NEXT_PUBLIC_VAPID_PUBLIC_KEY` y la privada en `VAPID_PRIVATE_KEY` (nunca con `NEXT_PUBLIC_`).
 - Botón «Activar avisos en este teléfono». El permiso del navegador se pide solo después de ese toque, nunca al cargar.
-- Las suscripciones se guardan por usuario y dispositivo en una tabla nueva (SQL nuevo, RLS: cada persona ve solo las suyas). Se pueden desactivar desde la app; las caducadas (404/410) se borran solas.
+- Las suscripciones se guardan por usuario y dispositivo en una tabla nueva (SQL nuevo). RLS de lectura y escritura: cada persona ve, crea y borra solo las suyas. Grant para `service_role`, como en `permisos-service-role.sql`.
+- Se pueden desactivar desde la app. Al cerrar sesión se borra la suscripción de ese dispositivo (un teléfono compartido no sigue recibiendo avisos). Las caducadas (404/410) se borran solas.
 - En iPhone solo funciona con la app añadida a la pantalla de inicio (iOS 16.4 o superior): la pantalla lo explica con pasos.
-- Botón «Enviar un aviso de prueba».
+- Botón «Enviar un aviso de prueba», con límite de envíos por usuario.
+- Ningún aviso lleva datos de salud en título, cuerpo, `tag`, `data` ni URL de clic.
 - En modo demostración (`supabase: false`) no se ofrece.
 - El texto de plantilla que ve el cliente en `components/app/screens/CitasScreen.tsx:201` («El envío real se activa al conectar tu servicio») se cambia por uno honesto. Mientras ECU-16 no esté, ningún texto promete recordatorios.
 - CSP actualizada si hace falta. Pruebas de la ruta de suscripción y del SQL.
 
 ## Notas
 - Decisión del alumno: notificaciones push reales (opción C).
+- El servicio push del navegador (Google, Apple o Mozilla) es un tercero nuevo: la política de privacidad debe mencionarlo (ECU-20).
 - Parte 1 de los recordatorios; la parte 2 es ECU-16.

@@ -45,7 +45,7 @@ Quien vuelve tras 30+ días entra por "Qué bueno verte de nuevo" (ya está en l
 ## D. Renovación y plan anual
 
 - **Sugerencia del anual** (mensual con 14+ días activos): `Un año de cuidado, con 4 meses gratis` — una sola vez; muestra el valor recibido.
-- **Pre-aviso del cobro anual:** 30 y 7 días antes. `Tu plan anual se renueva el {{fecha}}` con el valor del año en conteos y el enlace para administrar. **Se envía aunque cueste ingreso:** es transparencia, y en varios lugares es obligatoria (ver `58`).
+- **Pre-aviso del cobro anual:** 7 días antes (`DIAS_AVISO_RENOVACION`, ECU-14). `Tu plan anual se renueva el {{fecha}}` con el valor del año en conteos y el enlace para administrar. **Se envía aunque cueste ingreso:** es transparencia, y en varios lugares es obligatoria (ver `58`).
 
 ## E. Pago fallido (dunning) — recupera el ~⅓ del churn que no es decisión del cliente
 
